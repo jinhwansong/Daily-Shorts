@@ -1,9 +1,9 @@
-# 미스터리/괴담 — 매일 UTC 21:00 (한국 06:00 / 미국 동부 17:00)
+# 미스터리/괴담 — 매일 UTC 12:00 (한국 21:00 / 미국 동부 08:00)
 name: Mystery Pipeline
 
 on:
   schedule:
-    - cron: '0 21 * * *'
+    - cron: '0 12 * * *'  
   workflow_dispatch:
 
 concurrency:
