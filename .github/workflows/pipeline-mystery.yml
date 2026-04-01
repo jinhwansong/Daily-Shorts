@@ -25,6 +25,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 주제 중복 방지용 JSON — 러너가 매번 새로여도 이전 실행과 이어짐
+      - name: Restore used-topics cache
+        id: topics-cache
+        uses: actions/cache@v4
+        with:
+          path: output/used_topics_mystery.json
+          key: used-topics-mystery-${{ github.run_id }}
+          restore-keys: |
+            used-topics-mystery-
+
+      - name: Ensure output directory
+        run: mkdir -p output
+
       - name: Install FFmpeg
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
@@ -37,3 +50,10 @@ jobs:
 
       - name: Run mystery pipeline (1 video)
         run: node src/index.js --run-daily --genre=mystery --count=1
+
+      - name: Save used-topics cache
+        if: always() && hashFiles('output/used_topics_mystery.json') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: output/used_topics_mystery.json
+          key: used-topics-mystery-${{ github.run_id }}-${{ hashFiles('output/used_topics_mystery.json') }}
