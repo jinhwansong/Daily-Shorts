@@ -1,9 +1,11 @@
-# 다크 심리학 — 매일 UTC 13:00 (한국 22:00 / 미국 동부 09:00)
+# 다크 심리학 — 두 번째 채널 + YOUTUBE_REFRESH_TOKEN_PSYCHOLOGY 준비되면 아래 schedule 주석 해제
 name: Psychology Pipeline
 
 on:
-  schedule:
-    - cron: '0 13 * * *'
+  # 토큰 없이 cron 켜 두면 API 비용만 나가고 업로드는 실패할 수 있음 → 자동 실행 비활성화
+  # 준비되면 주석 해제: 매일 UTC 13:00 (KST 22:00)
+  # schedule:
+  #   - cron: '0 13 * * *'
   workflow_dispatch:
 
 concurrency:

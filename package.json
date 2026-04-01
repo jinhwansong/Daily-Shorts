@@ -5,7 +5,6 @@
   "main": "src/index.js",
   "scripts": {
     "mystery": "node src/index.js --run-daily --genre=mystery --count=1",
-    "dark-animals": "node src/index.js --run-daily --genre=dark-animals --count=1",
     "psychology": "node src/index.js --run-daily --genre=psychology --count=1",
     "run-once": "node src/index.js --run-once",
     "thumbnail-test": "node src/video/thumbnailGenerator.js"
