@@ -1,24 +1,14 @@
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
+const { getGenre, DEFAULT_GENRE } = require('../genres');
 
 const PEXELS_API = 'https://api.pexels.com/videos/search';
 
-const DARK_QUERIES = [
-  'dark forest night',
-  'abandoned building',
-  'foggy road',
-  'empty hallway',
-  'dark tunnel',
-  'stormy sky',
-  'old mansion',
-  'dark water',
-  'night city rain',
-  'shadow silhouette',
-];
-
-async function fetchBackgroundVideo(outputDir, query = null) {
-  const searchQuery = query || DARK_QUERIES[Math.floor(Math.random() * DARK_QUERIES.length)];
+async function fetchBackgroundVideo(outputDir, genreKey = DEFAULT_GENRE) {
+  const genre = getGenre(genreKey);
+  const queries = genre.videoQueries;
+  const searchQuery = queries[Math.floor(Math.random() * queries.length)];
 
   const response = await axios.get(PEXELS_API, {
     headers: { Authorization: process.env.PEXELS_API_KEY },
@@ -49,4 +39,4 @@ async function fetchBackgroundVideo(outputDir, query = null) {
   return videoPath;
 }
 
-module.exports = { fetchBackgroundVideo, DARK_QUERIES };
+module.exports = { fetchBackgroundVideo };

@@ -1,0 +1,39 @@
+# 미스터리/괴담 — 매일 UTC 21:00 (한국 06:00 / 미국 동부 17:00)
+name: Mystery Pipeline
+
+on:
+  schedule:
+    - cron: '0 21 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: pipeline-mystery
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+      YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+      YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+      YOUTUBE_REFRESH_TOKEN_MYSTERY: ${{ secrets.YOUTUBE_REFRESH_TOKEN_MYSTERY }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install FFmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Run mystery pipeline (1 video)
+        run: node src/index.js --run-daily --genre=mystery --count=1

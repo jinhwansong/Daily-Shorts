@@ -4,12 +4,15 @@
   "description": "Mystery/Horror YouTube Shorts automation pipeline",
   "main": "src/index.js",
   "scripts": {
-    "start": "node src/index.js",
-    "pipeline": "node src/index.js --run-once",
-    "daily": "node src/index.js --run-daily"
+    "mystery": "node src/index.js --run-daily --genre=mystery --count=1",
+    "dark-animals": "node src/index.js --run-daily --genre=dark-animals --count=1",
+    "psychology": "node src/index.js --run-daily --genre=psychology --count=1",
+    "run-once": "node src/index.js --run-once",
+    "thumbnail-test": "node src/video/thumbnailGenerator.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
+    "@napi-rs/canvas": "^0.1.53",
     "axios": "^1.7.0",
     "dotenv": "^16.4.0",
     "fluent-ffmpeg": "^2.1.3",
