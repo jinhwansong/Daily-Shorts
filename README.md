@@ -140,6 +140,10 @@ YOUTUBE_REFRESH_TOKEN=...
 # FFmpeg 설치 필요 → https://ffmpeg.org
 npm install
 
+# 비용 없음 — API·업로드 없이 FFmpeg·썸네일만 검증 (.env 불필요)
+npm run dry-run
+
+# 실제 파이프라인 (Claude·OpenAI 등 과금)
 npm run mystery        # 미스터리(Noctivault) 1편
 npm run psychology     # 심리학 1편 — 토큰 있을 때만
 ```

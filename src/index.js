@@ -12,6 +12,7 @@ const { composeVideo } = require('./video/videoComposer');
 const { generateThumbnail } = require('./video/thumbnailGenerator');
 const { uploadVideo, setThumbnail } = require('./upload/youtubeUploader');
 const { runCopyrightGuard } = require('./utils/copyrightGuard');
+const { runDryRunPipeline } = require('./utils/dryRunPipeline');
 
 const UPLOAD_COUNT = parseInt(process.env.DAILY_UPLOAD_COUNT || '1', 10);
 
@@ -87,17 +88,28 @@ const args = process.argv.slice(2);
 const genreArg = (args.find((a) => a.startsWith('--genre=')) || '').replace('--genre=', '') || DEFAULT_GENRE;
 const countArg = parseInt((args.find((a) => a.startsWith('--count=')) || '').replace('--count=', '') || String(UPLOAD_COUNT), 10);
 
-if (args.includes('--run-once')) {
-  // 장르 1개 영상 즉시 실행
-  runBatch(genreArg, 1).catch((e) => { console.error(e); process.exit(1); });
+if (args.includes('--dry-run')) {
+  // Claude/OpenAI/Pexels/YouTube 호출 없음 — FFmpeg·canvas만 (비용 없음)
+  runDryRunPipeline(genreArg).catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });
+} else if (args.includes('--run-once')) {
+  runBatch(genreArg, 1).catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });
 } else if (args.includes('--run-daily')) {
-  // 장르 N개 영상 배치 실행
-  runBatch(genreArg, countArg).catch((e) => { console.error(e); process.exit(1); });
+  runBatch(genreArg, countArg).catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });
 } else {
   console.log('Usage:');
+  console.log('  node src/index.js --dry-run [--genre=mystery]   # 비용 없음 (FFmpeg 필요)');
   console.log('  node src/index.js --run-once [--genre=mystery]');
-  console.log('  node src/index.js --run-daily [--genre=dark-animals] [--count=1]');
-  console.log('Genres: mystery | dark-animals | psychology');
+  console.log('  node src/index.js --run-daily [--genre=psychology] [--count=1]');
+  console.log('Genres: mystery | psychology');
 }
 
-module.exports = { runPipeline, runBatch };
+module.exports = { runPipeline, runBatch, runDryRunPipeline };
