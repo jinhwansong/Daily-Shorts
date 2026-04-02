@@ -99,9 +99,9 @@ async function runPipeline(topic, genreKey) {
   const hookText = script.split('\n')[0];
 
   const [finalPath, thumbnailPath] = await Promise.all([
-    composeVideo(videoPath, audioPath, assPath, outputDir, { bgmPath }),
-    Promise.resolve(generateThumbnail(hookText, outputDir, genreKey)),
-  ]);
+  composeVideo(videoPath, audioPath, assPath, outputDir, { bgmPath }),
+  generateThumbnail(hookText, outputDir, genreKey, metadata.thumbnailQuery || null),
+]);
 
   // 저작권 가드 (업로드 전 자동 검증)
   runCopyrightGuard(outputDir, { videoPath, audioPath, thumbnailPath, script });

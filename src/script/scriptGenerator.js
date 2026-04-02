@@ -49,7 +49,7 @@ TAGS: <tag1>,<tag2>,...`,
   const titleMatch = raw.match(/TITLE:\s*(.+)/);
   const descMatch = raw.match(/DESCRIPTION:\s*([\s\S]+?)(?=TAGS:|$)/);
   const tagsMatch = raw.match(/TAGS:\s*(.+)/);
-
+  const thumbnailMatch = raw.match(/THUMBNAIL:\s*(.+)/);  // 추가
   const channelTag = genre.channelName ? genre.channelName.toLowerCase() : '';
   const baseTags = tagsMatch ? tagsMatch[1].split(',').map((t) => t.trim()) : ['shorts'];
   const allTags = channelTag ? [channelTag, ...baseTags] : baseTags;
@@ -61,6 +61,7 @@ TAGS: <tag1>,<tag2>,...`,
     title: titleMatch ? titleMatch[1].trim() : topic,
     description: baseDesc + channelCredit,
     tags: [...new Set(allTags)],
+    thumbnailQuery: thumbnailMatch ? thumbnailMatch[1].trim() : null,
   };
 }
 
