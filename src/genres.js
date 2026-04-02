@@ -7,10 +7,24 @@ const GENRES = {
     label: 'Mystery & Horror',
     channelName: 'Noctivault',
     promptFile: path.join(__dirname, '../prompts/mystery.txt'),
-    topicInstruction: `Generate exactly {count} unique mystery or horror topics for YouTube Shorts.
-Each topic should feel real and unsettling.
-Draw from: unexplained disappearances, strange true crime, creepy historical events, urban legends, paranormal incidents, eerie coincidences.`,
+    topicInstruction: `Generate exactly {count} unique, real-life mystery topics for YouTube Shorts. 
+Focus on obscure but documented true crime, unsolved disappearances, and disturbing historical anomalies. 
+Each topic must include a specific name, location, or year (e.g., "The 1977 Girl Scout Camp Murders" or "The Disappearance of Lars Mittank"). 
+Prioritize cases with "unexplainable evidence" like eerie last photos, strange phone calls, or impossible crime scenes to maximize curiosity. 
+Avoid generic urban legends; stick to creepy reality that feels 100% authentic.`,
     videoQueries: [
+      'police tape crime scene', // 실제 미스터리 느낌 강화
+      'security camera footage eerie', // CCTV 느낌은 몰입감이 높음
+      'person running dark woods', // 긴박함 추가
+      'hand writing on dusty glass', // 미스터리한 분위기
+      'old polaroid photos', // 실화 사건 느낌
+      'old newspaper clippings', // 미스터리한 분위기
+      'old photo album', // 실화 사건 느낌
+      'old diary entry', // 미스터리한 분위기
+      'old letter', // 실화 사건 느낌
+      'old document', // 미스터리한 분위기
+      'old photo', // 실화 사건 느낌
+      'old photo album', // 미스터리한 분위기
       'dark forest night',
       'abandoned building',
       'foggy road',
@@ -27,7 +41,7 @@ Draw from: unexplained disappearances, strange true crime, creepy historical eve
     /** 단일 파일 폴백 (bgmDir 이 비어 있을 때만) */
     bgmFile: path.join(__dirname, '../assets/bgm/mystery.mp3'),
     /** Freesound 검색어 (CC0만 자동 선택) */
-    freesoundBgmQuery: 'dark ambient drone atmospheric tension',
+    freesoundBgmQuery: 'dark cinematic tension heart beat ticking clock',
   },
 
   psychology: {

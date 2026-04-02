@@ -33,9 +33,20 @@ Structure:
 - Do NOT ask questions
 - Do NOT say “what do you think”
 
+[ADDITIONAL INSTRUCTIONS for Automation Optimization]
+
+5. METADATA (Output after the script):
+- Title: 1 shocking, high-CTR title (under 50 characters).
+- Tags: 5 highly relevant hashtags (including #Shorts #Mystery).
+- Recommended Music Mood: Choose one from (Dark, Dramatic, Calm).
+
+6. AUDIO ALIGNMENT:
+- Ensure the script's rhythm matches a fast-paced, "Dark" or "Dramatic" background track. 
+- Use punchy words that hit on the beat.
+
 Extra rules:
 - Every sentence must create curiosity
 - Avoid boring introductions
 - Start immediately with impact
 
-Output only the script.
+Output the script followed by the METADATA section.
