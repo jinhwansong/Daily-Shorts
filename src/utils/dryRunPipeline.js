@@ -48,7 +48,7 @@ function scriptToSrt(script, totalSec) {
 
 function estimateDurationSec(script) {
   const words = script.split(/\s+/).filter(Boolean).length;
-  return Math.min(90, Math.max(25, Math.round(words * 0.42)));
+  return Math.min(40, Math.max(28, Math.round(words * 0.42)));
 }
 
 function createSilentMp3(outPath, durationSec) {

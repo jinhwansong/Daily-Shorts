@@ -3,8 +3,12 @@ name: Mystery Pipeline
 
 on:
   schedule:
-    - cron: '0 12 * * *'  
-  workflow_dispatch:
+    - cron: '0 12 * * *'   # UTC 12:00 = 미국 동부 08:00
+    - cron: '0 15 * * *'   # UTC 15:00 = 미국 동부 11:00
+    - cron: '0 18 * * *'   # UTC 18:00 = 미국 동부 14:00
+    - cron: '0 21 * * *'   # UTC 21:00 = 미국 동부 17:00
+    - cron: '0 00 * * *'   # UTC 00:00 = 미국 동부 20:00
+  workflow_dispatch:        # 수동 실행용
 
 concurrency:
   group: pipeline-mystery
@@ -21,6 +25,10 @@ jobs:
       YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
       YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
       YOUTUBE_REFRESH_TOKEN_MYSTERY: ${{ secrets.YOUTUBE_REFRESH_TOKEN_MYSTERY }}
+      # 선택: Freesound CC0 배경음 — 비워 두면 로컬 assets/bgm 또는 무 BGM
+      FREESOUND_API_KEY: ${{ secrets.FREESOUND_API_KEY }}
+      # 선택: 설명란 하단 고정 저작권·출처 (Repository secret, 여러 줄 가능)
+      YOUTUBE_ATTRIBUTION_FOOTER: ${{ secrets.YOUTUBE_ATTRIBUTION_FOOTER }}
 
     steps:
       - uses: actions/checkout@v4
@@ -49,7 +57,7 @@ jobs:
       - run: npm ci
 
       - name: Run mystery pipeline (1 video)
-        run: node src/index.js --run-daily --genre=mystery --count=1
+        run: node src/index.js --run-daily --genre=mystery --count=5
 
       - name: Save used-topics cache
         if: always() && hashFiles('output/used_topics_mystery.json') != ''

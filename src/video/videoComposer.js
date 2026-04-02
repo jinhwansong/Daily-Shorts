@@ -35,9 +35,31 @@ function escapeSubtitlesPath(filePath) {
   return normalized.replace(/\\/g, '\\\\').replace(/:/g, '\\:').replace(/'/g, "\\'");
 }
 
-async function composeVideo(backgroundPath, audioPath, assPath, outputDir) {
+function buildVideoFilter(assPathEscaped, totalDurationStr) {
+  return [
+    `[0:v]loop=-1:size=300,trim=duration=${totalDurationStr},setpts=PTS-STARTPTS,`,
+    `scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=increase,`,
+    `crop=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT},`,
+    `eq=brightness=-0.15:saturation=0.7[bg];`,
+    `[bg]subtitles='${assPathEscaped}'[burned]`,
+  ].join('');
+}
+
+/**
+ * @param {string} backgroundPath
+ * @param {string} audioPath - TTS mp3
+ * @param {string} assPath
+ * @param {string} outputDir
+ * @param {{ bgmPath?: string | null }} [options]
+ */
+async function composeVideo(backgroundPath, audioPath, assPath, outputDir, options = {}) {
+  const { bgmPath: bgmPathOpt } = options;
+  const bgmPath =
+    bgmPathOpt && fs.existsSync(path.resolve(bgmPathOpt)) ? path.resolve(bgmPathOpt) : null;
+
   const duration = await getAudioDuration(audioPath);
   const totalDuration = duration + 1.5;
+  const TD = totalDuration.toFixed(3);
   const outputPath = path.resolve(path.join(outputDir, 'final.mp4'));
 
   const tmpAss = path.join(os.tmpdir(), `shorts-burn-${Date.now()}.ass`);
@@ -47,48 +69,101 @@ async function composeVideo(backgroundPath, audioPath, assPath, outputDir) {
   const bgResolved = path.resolve(backgroundPath);
   const audioResolved = path.resolve(audioPath);
 
-  const filterComplex = [
-    `[0:v]loop=-1:size=300,trim=duration=${totalDuration},setpts=PTS-STARTPTS,`,
-    `scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=increase,`,
-    `crop=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT},`,
-    `eq=brightness=-0.15:saturation=0.7[bg];`,
-    `[bg]subtitles='${subPath}'[burned]`,
-  ].join('');
+  const rawVol = parseFloat(process.env.BGM_VOLUME || '0.14');
+  const bgmVol =
+    Number.isFinite(rawVol) && rawVol >= 0 && rawVol <= 2 ? rawVol.toFixed(3) : '0.140';
 
-  // fluent-ffmpeg는 -map 등 인자 분리가 깨지는 경우가 있어 ffmpeg 직접 호출 (CI 안정)
-  const args = [
-    '-hide_banner',
-    '-y',
-    '-stream_loop',
-    '-1',
-    '-i',
-    bgResolved,
-    '-itsoffset',
-    '1.0',
-    '-i',
-    audioResolved,
-    '-filter_complex',
-    filterComplex,
-    '-map',
-    '[burned]',
-    '-map',
-    '1:a',
-    '-t',
-    String(totalDuration),
-    '-c:v',
-    'libx264',
-    '-preset',
-    'fast',
-    '-crf',
-    '23',
-    '-c:a',
-    'aac',
-    '-b:a',
-    '128k',
-    '-movflags',
-    '+faststart',
-    outputPath,
-  ];
+  let args;
+  let filterComplex;
+
+  if (bgmPath) {
+    const bgmResolved = bgmPath;
+    filterComplex = [
+      buildVideoFilter(subPath, TD),
+      `;[1:a]adelay=1000|1000,aformat=sample_rates=44100:channel_layouts=stereo[voice];`,
+      `[2:a]atrim=start=0:duration=${TD},asetpts=PTS-STARTPTS,volume=${bgmVol},aformat=sample_rates=44100:channel_layouts=stereo[bgm];`,
+      `[voice][bgm]amix=inputs=2:duration=longest:dropout_transition=2[a_mix];`,
+      `[a_mix]atrim=start=0:duration=${TD},asetpts=PTS-STARTPTS[aout]`,
+    ].join('');
+
+    args = [
+      '-hide_banner',
+      '-y',
+      '-stream_loop',
+      '-1',
+      '-i',
+      bgResolved,
+      '-i',
+      audioResolved,
+      '-stream_loop',
+      '-1',
+      '-i',
+      bgmResolved,
+      '-filter_complex',
+      filterComplex,
+      '-map',
+      '[burned]',
+      '-map',
+      '[aout]',
+      '-t',
+      TD,
+      '-c:v',
+      'libx264',
+      '-preset',
+      'fast',
+      '-crf',
+      '23',
+      '-c:a',
+      'aac',
+      '-b:a',
+      '192k',
+      '-movflags',
+      '+faststart',
+      outputPath,
+    ];
+  } else {
+    filterComplex = [
+      `[0:v]loop=-1:size=300,trim=duration=${TD},setpts=PTS-STARTPTS,`,
+      `scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=increase,`,
+      `crop=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT},`,
+      `eq=brightness=-0.15:saturation=0.7[bg];`,
+      `[bg]subtitles='${subPath}'[burned]`,
+    ].join('');
+
+    args = [
+      '-hide_banner',
+      '-y',
+      '-stream_loop',
+      '-1',
+      '-i',
+      bgResolved,
+      '-itsoffset',
+      '1.0',
+      '-i',
+      audioResolved,
+      '-filter_complex',
+      filterComplex,
+      '-map',
+      '[burned]',
+      '-map',
+      '1:a',
+      '-t',
+      TD,
+      '-c:v',
+      'libx264',
+      '-preset',
+      'fast',
+      '-crf',
+      '23',
+      '-c:a',
+      'aac',
+      '-b:a',
+      '128k',
+      '-movflags',
+      '+faststart',
+      outputPath,
+    ];
+  }
 
   const r = spawnSync('ffmpeg', args, {
     encoding: 'utf-8',

@@ -23,6 +23,8 @@ jobs:
       YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
       YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
       YOUTUBE_REFRESH_TOKEN_PSYCHOLOGY: ${{ secrets.YOUTUBE_REFRESH_TOKEN_PSYCHOLOGY }}
+      FREESOUND_API_KEY: ${{ secrets.FREESOUND_API_KEY }}
+      YOUTUBE_ATTRIBUTION_FOOTER: ${{ secrets.YOUTUBE_ATTRIBUTION_FOOTER }}
 
     steps:
       - uses: actions/checkout@v4
@@ -37,5 +39,5 @@ jobs:
 
       - run: npm ci
 
-      - name: Run psychology pipeline (1 video)
-        run: node src/index.js --run-daily --genre=psychology --count=1
+      - name: Run psychology pipeline (5 videos)
+        run: node src/index.js --run-daily --genre=psychology --count=5

@@ -31,11 +31,38 @@ function runCopyrightGuard(outputDir, { videoPath, audioPath, thumbnailPath, scr
     audioExists ? '' : '파일 없음'
   );
 
-  // 3. 음악 미삽입: output 디렉토리에 music 파일 없는지
-  const musicFiles = fs.readdirSync(outputDir).filter((f) =>
-    /\.(mp3|wav|flac|ogg|aac)$/.test(f) && f !== 'audio.mp3'
+  // 3. output 안에 허용되지 않은 음원이 없는지 (Freesound CC0는 freesound_bgm.json으로 검증)
+  const allowedExtraAudio = new Set(['freesound_bgm.mp3']);
+  const musicFiles = fs.readdirSync(outputDir).filter(
+    (f) =>
+      /\.(mp3|wav|flac|ogg|aac)$/.test(f) &&
+      f !== 'audio.mp3' &&
+      !allowedExtraAudio.has(f)
   );
-  check('음악 미삽입', musicFiles.length === 0, musicFiles.join(', ') || '');
+  check('output 폴더에 허용되지 않은 음원 미삽입', musicFiles.length === 0, musicFiles.join(', ') || '');
+
+  const fsBgm = path.join(outputDir, 'freesound_bgm.mp3');
+  const fsMeta = path.join(outputDir, 'freesound_bgm.json');
+  if (fs.existsSync(fsBgm)) {
+    let ok = false;
+    let detail = '';
+    try {
+      if (fs.existsSync(fsMeta)) {
+        const m = JSON.parse(fs.readFileSync(fsMeta, 'utf-8'));
+        const allowed =
+          m.source === 'freesound' &&
+          (m.license === 'Creative Commons 0' || m.license === 'Attribution');
+        const blockedNc = m.license === 'Attribution NonCommercial';
+        ok = allowed && !blockedNc;
+        if (!ok) detail = blockedNc ? 'NonCommercial 라이선스 불가' : `라이선스: ${m.license || '?'}`;
+      } else {
+        detail = 'freesound_bgm.json 없음';
+      }
+    } catch (e) {
+      detail = e.message;
+    }
+    check('Freesound BGM 메타(CC0 또는 Attribution)', ok, detail);
+  }
 
   // 4. 스크립트 AI 생성: script.txt 존재 + 내용 있음
   const scriptPath = path.join(outputDir, 'script.txt');

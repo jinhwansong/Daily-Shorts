@@ -22,6 +22,12 @@ Draw from: unexplained disappearances, strange true crime, creepy historical eve
     ],
     thumbnailColor: '#0a0a0a',
     thumbnailAccent: '#c0392b',
+    /** 미스터리용 로컬 BGM 풀 — 이 안의 .mp3 중 하나를 무작위 (Freesound 실패 시) */
+    bgmDir: path.join(__dirname, '../assets/bgm/dark'),
+    /** 단일 파일 폴백 (bgmDir 이 비어 있을 때만) */
+    bgmFile: path.join(__dirname, '../assets/bgm/mystery.mp3'),
+    /** Freesound 검색어 (CC0만 자동 선택) */
+    freesoundBgmQuery: 'dark ambient drone atmospheric tension',
   },
 
   psychology: {
@@ -41,6 +47,8 @@ Draw from: cognitive biases, manipulation tactics, disturbing experiments, socia
     ],
     thumbnailColor: '#0a0a1a',
     thumbnailAccent: '#8e44ad',
+    bgmFile: path.join(__dirname, '../assets/bgm/psychology.mp3'),
+    freesoundBgmQuery: 'calm ambient soft subtle meditation',
   },
 };
 

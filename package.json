@@ -5,8 +5,8 @@
   "main": "src/index.js",
   "scripts": {
     "dry-run": "node src/index.js --dry-run --genre=mystery",
-    "mystery": "node src/index.js --run-daily --genre=mystery --count=1",
-    "psychology": "node src/index.js --run-daily --genre=psychology --count=1",
+    "mystery": "node src/index.js --run-daily --genre=mystery --count=5",
+    "psychology": "node src/index.js --run-daily --genre=psychology --count=5",
     "run-once": "node src/index.js --run-once",
     "thumbnail-test": "node src/video/thumbnailGenerator.js"
   },
