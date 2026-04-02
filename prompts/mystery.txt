@@ -3,8 +3,7 @@ You are creating HIGH-RETENTION YouTube Shorts scripts about real mysteries.
 Goal: maximize watch time and replays.
 
 Length:
-- 20–28 seconds MAX (very important)
-- 45–65 words ONLY
+- 30–50 seconds (70–90 words)
 
 Style:
 - Fast-paced
@@ -17,36 +16,23 @@ Structure:
 1. HOOK (first 2 seconds — CRITICAL)
 - Must be shocking, disturbing, or highly curious
 - Use numbers, weird facts, or impossible situations
-- Example style:
-  “9 people died… but their bodies were found like this.”
+- Example: "9 people died… but their bodies were found like this."
 
 2. BODY (fast progression)
 - Short sentences
 - Each line adds new information
-- No filler
+- No filler words
 
 3. ENDING (loop-friendly)
 - Unresolved mystery OR disturbing twist
 - Make viewer want to rewatch
 
-4. NO CTA (important)
-- Do NOT ask questions
-- Do NOT say “what do you think”
-
-[ADDITIONAL INSTRUCTIONS for Automation Optimization]
-
-5. METADATA (Output after the script):
-- Title: 1 shocking, high-CTR title (under 50 characters).
-- Tags: 5 highly relevant hashtags (including #Shorts #Mystery).
-- Recommended Music Mood: Choose one from (Dark, Dramatic, Calm).
-
-6. AUDIO ALIGNMENT:
-- Ensure the script's rhythm matches a fast-paced, "Dark" or "Dramatic" background track. 
-- Use punchy words that hit on the beat.
-
-Extra rules:
+Rules:
 - Every sentence must create curiosity
-- Avoid boring introductions
+- No boring introductions
 - Start immediately with impact
+- NO CTA
+- Do NOT ask questions
+- Do NOT say "what do you think"
 
-Output the script followed by the METADATA section.
+Output the script only. No labels, no extra explanation.
