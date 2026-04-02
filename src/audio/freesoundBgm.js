@@ -41,10 +41,6 @@ async function verifySoundInstance(soundId, token) {
   return { ok: true, sound: s };
 }
 
-/**
- * 설명란에 붙일 한 줄. Attribution은 법적 표기이므로 라이선스별로 문구 분리.
- * @param {{ name: string, username: string, license: string, soundId: number, url?: string }} meta
- */
 function buildFreesoundAttributionLine(meta) {
   const url = meta.url || `https://freesound.org/s/${meta.soundId}/`;
   const name = meta.name || 'Sound';
@@ -62,9 +58,6 @@ function buildFreesoundAttributionLine(meta) {
   return `BGM: "${name}" — Freesound / ${user}. ${url} (License: ${meta.license})`;
 }
 
-/**
- * CC BY는 표기 의무 → FREESOUND_APPEND_CREDIT=0 이라도 반드시 설명에 포함해야 함
- */
 function mustAppendFreesoundCredit(meta) {
   if (!meta || !meta.license) return false;
   if (meta.license === 'Attribution') return true;
@@ -72,8 +65,23 @@ function mustAppendFreesoundCredit(meta) {
 }
 
 /**
+ * search/text(구) → 404면 공식 /search/ 로 재시도
+ */
+async function freesoundSearch(params) {
+  const qs = params.toString();
+  const paths = [`${API}/search/text/?${qs}`, `${API}/search/?${qs}`];
+  let lastRes;
+  for (const fullUrl of paths) {
+    const res = await axios.get(fullUrl, { timeout: 45000, validateStatus: () => true });
+    lastRes = res;
+    if (res.status === 404) continue;
+    return res;
+  }
+  return lastRes;
+}
+
+/**
  * Freesound에서 CC0만 검색 → 서버 재검증 후 프리뷰 MP3 저장
- * @returns {Promise<{ path: string; attributionLine: string; meta: object } | null>}
  */
 async function fetchFreesoundBgm(outputDir, genreKey = DEFAULT_GENRE) {
   const token = process.env.FREESOUND_API_KEY;
@@ -84,33 +92,58 @@ async function fetchFreesoundBgm(outputDir, genreKey = DEFAULT_GENRE) {
 
   const genre = getGenre(genreKey);
   const primaryQuery = genre.freesoundBgmQuery || 'ambient atmospheric loop';
-  const fallbackQueries = [
-    primaryQuery,
-    'ambient loop',
-    'dark ambient',
-    'soft background music',
-  ];
+
+  console.log(`  Freesound BGM 검색 [장르: ${genreKey}] 기본어: "${primaryQuery}"`);
 
   const filterLicense = allowAttribution
     ? '(license:"Creative Commons 0" OR license:Attribution)'
     : 'license:"Creative Commons 0"';
-  const filter = `${filterLicense} duration:[12 TO 240]`;
+
+  /** duration·쿼리를 단계적으로 완화 (엄격 → 넓음 → CC0만) */
+  const searchPlans = [];
+
+  const sharedFallbacks = ['ambient loop', 'ambient', 'soundscape', 'music', 'loop'];
+  const moodFallbacks =
+    genreKey === 'psychology'
+      ? ['calm', 'soft', 'meditation', 'subtle', 'minimal']
+      : ['dark ambient', 'drone', 'dark', 'tension'];
+  const baseQueries = [primaryQuery, ...sharedFallbacks, ...moodFallbacks];
+
+  const durationTiers = [
+    'duration:[12 TO 240]',
+    'duration:[5 TO 600]',
+    null,
+  ];
+
+  for (const q of [...new Set(baseQueries)]) {
+    for (const dur of durationTiers) {
+      const filterBody = dur ? `${filterLicense} ${dur}` : filterLicense;
+      searchPlans.push({ query: q, filterBody, label: `${q || '(빈쿼리)'} + ${dur || 'CC0만'}` });
+    }
+  }
+
+  searchPlans.push({
+    query: '',
+    filterBody: filterLicense,
+    label: '빈 쿼리 + CC0만 (다운로드 많은 순)',
+  });
 
   let lastErr;
-  for (const query of [...new Set(fallbackQueries)]) {
+
+  for (const plan of searchPlans) {
     try {
       const params = new URLSearchParams({
-        query,
-        filter,
+        query: plan.query,
+        filter: plan.filterBody,
         sort: 'downloads_desc',
-        page_size: '30',
+        page_size: '50',
         fields: 'id,name,username,license,previews,duration,url',
         token: token.trim(),
       });
-      const url = `${API}/search/text/?${params.toString()}`;
-      const res = await axios.get(url, { timeout: 45000, validateStatus: () => true });
-      if (res.status !== 200) {
-        lastErr = new Error(res.data?.detail || `Freesound search HTTP ${res.status}`);
+
+      const res = await freesoundSearch(params);
+      if (!res || res.status !== 200) {
+        lastErr = new Error(res?.data?.detail || `Freesound search HTTP ${res?.status || '?'}`);
         continue;
       }
       const data = res.data;
@@ -118,17 +151,24 @@ async function fetchFreesoundBgm(outputDir, genreKey = DEFAULT_GENRE) {
         lastErr = new Error(String(data.detail));
         continue;
       }
+
       const results = data.results || [];
       const candidates = shuffle(
         results.filter((s) => {
           if (!s || !allowedLicenses.has(s.license)) return false;
-          const prev = s.previews && (s.previews['preview-hq-mp3'] || s.previews['preview-lq-mp3']);
-          return Boolean(prev);
+          return true;
         })
       );
 
       if (candidates.length === 0) {
-        lastErr = new Error(allowAttribution ? '허용 라이선스 결과 없음' : 'CC0 결과 없음');
+        if (results.length > 0) {
+          const sample = results[0];
+          lastErr = new Error(
+            `후보 ${results.length}개인데 라이선스 필터에서 제외됨 (예: ${sample.license || '?'})`
+          );
+        } else {
+          lastErr = new Error(`CC0 결과 없음 (${plan.label})`);
+        }
         continue;
       }
 
@@ -148,7 +188,10 @@ async function fetchFreesoundBgm(outputDir, genreKey = DEFAULT_GENRE) {
         }
 
         const previewUrl =
-          s.previews['preview-hq-mp3'] || s.previews['preview-lq-mp3'] || pick.previews['preview-hq-mp3'];
+          s.previews?.['preview-hq-mp3'] ||
+          s.previews?.['preview-lq-mp3'] ||
+          pick.previews?.['preview-hq-mp3'] ||
+          pick.previews?.['preview-lq-mp3'];
         if (!previewUrl) {
           lastErr = new Error('프리뷰 URL 없음');
           continue;
@@ -175,7 +218,7 @@ async function fetchFreesoundBgm(outputDir, genreKey = DEFAULT_GENRE) {
           username: s.username,
           license: s.license,
           url: s.url || `https://freesound.org/s/${s.id}/`,
-          queryUsed: query,
+          queryUsed: plan.label,
           verifiedAt: new Date().toISOString(),
         };
         fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2));
@@ -190,7 +233,9 @@ async function fetchFreesoundBgm(outputDir, genreKey = DEFAULT_GENRE) {
     }
   }
 
-  console.warn(`  ⚠ Freesound BGM 실패: ${lastErr?.message || lastErr} — 로컬 assets/bgm 또는 TTS만 사용`);
+  console.warn(
+    `  ⚠ Freesound: ${lastErr?.message || lastErr} → 이 영상에는 Freesound 음원을 쓰지 않습니다 (0곡).`
+  );
   return null;
 }
 

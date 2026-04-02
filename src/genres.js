@@ -47,6 +47,8 @@ Draw from: cognitive biases, manipulation tactics, disturbing experiments, socia
     ],
     thumbnailColor: '#0a0a1a',
     thumbnailAccent: '#8e44ad',
+    /** 심리학용 로컬 BGM 풀 — mp3만 넣으면 Freesound 실패 시 무작위 */
+    bgmDir: path.join(__dirname, '../assets/bgm/psychology'),
     bgmFile: path.join(__dirname, '../assets/bgm/psychology.mp3'),
     freesoundBgmQuery: 'calm ambient soft subtle meditation',
   },

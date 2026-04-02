@@ -18,10 +18,11 @@ const { generateThumbnail } = require('./video/thumbnailGenerator');
 const { uploadVideo, setThumbnail } = require('./upload/youtubeUploader');
 const { runCopyrightGuard } = require('./utils/copyrightGuard');
 const { getAttributionFooter } = require('./utils/attributionFooter');
-const { pickRandomLocalBgm } = require('./utils/localBgm');
+const { pickRandomLocalBgm, listMp3InDir } = require('./utils/localBgm');
 const { runDryRunPipeline } = require('./utils/dryRunPipeline');
 
 const UPLOAD_COUNT = parseInt(process.env.DAILY_UPLOAD_COUNT || '5', 10);
+const REPO_ROOT = path.join(__dirname, '..');
 
 async function runPipeline(topic, genreKey) {
   const genre = getGenre(genreKey);
@@ -61,8 +62,25 @@ async function runPipeline(topic, genreKey) {
   } else {
     const local = pickRandomLocalBgm(genre);
     if (local) {
-      bgmPath = local;
-      console.log(`  🎵 로컬 BGM: ${path.basename(local)}`);
+      bgmPath = local.path;
+      const poolRel = path.relative(REPO_ROOT, local.poolPath).replace(/\\/g, '/');
+      const n = genre.bgmDir ? listMp3InDir(genre.bgmDir).length : 0;
+      const how =
+        local.poolKind === 'folder'
+          ? `폴더 "${poolRel}" (${n}곡 중 무작위 1곡 — 영상마다 다른 곡이 나올 수 있음)`
+          : `단일 파일만 사용 → ${poolRel}`;
+      console.log(`  ▶ 실제 배경음은 위 Freesound와 합쳐지지 않고, 아래 로컬 파일 1개만 TTS와 믹싱됩니다.`);
+      console.log(`     파일명: ${local.fileName}`);
+      console.log(`     ${how}`);
+      metadata.bgmLocal = {
+        source: 'local',
+        genre: genreKey,
+        poolKind: local.poolKind,
+        poolPath: poolRel,
+        fileName: local.fileName,
+        note: 'Freesound 실패 시 로컬 풀에서 선택',
+      };
+      fs.writeFileSync(path.join(outputDir, 'metadata.json'), JSON.stringify(metadata, null, 2));
     }
   }
   if (!bgmPath) {

@@ -57,7 +57,7 @@ jobs:
       - run: npm ci
 
       - name: Run mystery pipeline (1 video)
-        run: node src/index.js --run-daily --genre=mystery --count=5
+        run: node src/index.js --run-daily --genre=mystery --count=1
 
       - name: Save used-topics cache
         if: always() && hashFiles('output/used_topics_mystery.json') != ''
