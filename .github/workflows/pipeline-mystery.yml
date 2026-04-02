@@ -3,11 +3,11 @@ name: Mystery Pipeline
 
 on:
   schedule:
-    - cron: '0 12 * * *'   # UTC 12:00 = 미국 동부 08:00
-    - cron: '0 15 * * *'   # UTC 15:00 = 미국 동부 11:00
-    - cron: '0 18 * * *'   # UTC 18:00 = 미국 동부 14:00
-    - cron: '0 21 * * *'   # UTC 21:00 = 미국 동부 17:00
-    - cron: '0 00 * * *'   # UTC 00:00 = 미국 동부 20:00
+    - cron: '17 12 * * *'   # UTC 12:17
+    - cron: '43 15 * * *'   # UTC 15:43
+    - cron: '7 18 * * *'    # UTC 18:07
+    - cron: '31 21 * * *'   # UTC 21:31
+    - cron: '53 00 * * *'   # UTC 00:53
   workflow_dispatch:        # 수동 실행용
 
 concurrency:
