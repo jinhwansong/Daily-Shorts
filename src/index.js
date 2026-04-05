@@ -96,7 +96,9 @@ async function runPipeline(topic, genreKey) {
   }
 
   // 썸네일 생성 (FFmpeg 합성과 병렬)
-  const hookText = script.split('\n')[0];
+  const hookText = metadata.title.length > 35
+  ? metadata.title.substring(0, 35).trim() + '...'
+  : metadata.title;
 
   const [finalPath, thumbnailPath] = await Promise.all([
   composeVideo(videoPath, audioPath, assPath, outputDir, { bgmPath }),
