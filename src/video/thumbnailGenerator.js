@@ -8,11 +8,11 @@ const WIDTH = 1280;
 const HEIGHT = 720;
 
 // Bebas Neue 폰트 등록
-const FONT_PATH = path.join(__dirname, '../../assets/fonts/BebasNeue-Regular.ttf');
+const FONT_PATH = path.join(__dirname, '../../assets/fonts/Anton-Regular.ttf');
 if (fs.existsSync(FONT_PATH)) {
-  GlobalFonts.registerFromPath(FONT_PATH, 'BebasNeue');
+  GlobalFonts.registerFromPath(FONT_PATH, 'Anton');
 }
-const TITLE_FONT = fs.existsSync(FONT_PATH) ? 'BebasNeue' : 'Arial';
+const TITLE_FONT = fs.existsSync(FONT_PATH) ? 'Anton' : 'BebasNeue';
 
 function wrapText(ctx, text, maxWidth) {
   const words = text.split(' ');
@@ -35,7 +35,7 @@ function wrapText(ctx, text, maxWidth) {
 function getRandomBackground(genreKey) {
   const dir = path.join(__dirname, `../../assets/images/${genreKey}`);
   if (!fs.existsSync(dir)) return null;
-  const files = fs.readdirSync(dir).filter(f => /\.(jpg|jpeg|png)$/.test(f));
+  const files = fs.readdirSync(dir).filter((f) => /\.(jpg|jpeg|png)$/.test(f));
   if (!files.length) return null;
   return path.join(dir, files[Math.floor(Math.random() * files.length)]);
 }
@@ -77,7 +77,12 @@ async function fetchPexelsImage(query, outputDir) {
  * @param {string|null} thumbnailQuery
  * @returns {Promise<string>}
  */
-async function generateThumbnail(hookText, outputDir, genreKey = DEFAULT_GENRE, thumbnailQuery = null) {
+async function generateThumbnail(
+  hookText,
+  outputDir,
+  genreKey = DEFAULT_GENRE,
+  thumbnailQuery = null,
+) {
   const genre = getGenre(genreKey);
   const canvas = createCanvas(WIDTH, HEIGHT);
   const ctx = canvas.getContext('2d');
@@ -201,12 +206,12 @@ if (require.main === module) {
 
   const samples = {
     mystery: {
-      text: 'LIGHTHOUSE KEEPERS VANISHED',           // 짧게
-      query: 'dark lighthouse foggy night ocean'     // 분위기 맞는 쿼리
+      text: 'LIGHTHOUSE KEEPERS VANISHED', // 짧게
+      query: 'dark lighthouse foggy night ocean', // 분위기 맞는 쿼리
     },
     psychology: {
-      text: 'YOUR BRAIN LIES TO YOU',                // 짧게
-      query: 'dark corridor shadow human silhouette' // 분위기 맞는 쿼리
+      text: 'YOUR BRAIN LIES TO YOU', // 짧게
+      query: 'dark corridor shadow human silhouette', // 분위기 맞는 쿼리
     },
   };
 
@@ -216,7 +221,7 @@ if (require.main === module) {
         samples[genre].text,
         outDir,
         genre,
-        samples[genre].query
+        samples[genre].query,
       );
       console.log(`${genre}: ${p}`);
     }

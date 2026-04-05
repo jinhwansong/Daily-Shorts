@@ -30,9 +30,21 @@ async function generateMetadata(script, topic, genreKey = DEFAULT_GENRE) {
       {
         role: 'user',
         content: `Based on this YouTube Shorts script (genre: ${genre.label}), generate:
-1. A compelling title (under 60 chars, no clickbait words like "SHOCKING")
-2. A short description (2-3 sentences)
-3. 10 relevant hashtags
+1. A title that stops the scroll (under 50 chars)
+2. A short description (2-3 sentences, NO spoilers, build curiosity only)
+3. 5 relevant hashtags
+4. A Pexels image search query (2-4 words, dark and atmospheric)
+
+Title rules:
+- Start with action, impossibility, or a number
+- Use specific names or places when possible
+- Create immediate curiosity
+- NO slow descriptive titles
+- Good examples:
+  "She Vanished. Her Car Was Still Running."
+  "9 Hikers Died. No One Knows Why."
+  "He Checked In. No One Saw Him Leave."
+  "They Found Her Diary. Wish They Hadn't."
 
 Script:
 ${script}
@@ -40,7 +52,8 @@ ${script}
 Output in this exact format:
 TITLE: <title>
 DESCRIPTION: <description>
-TAGS: <tag1>,<tag2>,...`,
+TAGS: <tag1>,<tag2>,...
+THUMBNAIL: <pexels search query>`,
       },
     ],
   });
@@ -49,9 +62,11 @@ TAGS: <tag1>,<tag2>,...`,
   const titleMatch = raw.match(/TITLE:\s*(.+)/);
   const descMatch = raw.match(/DESCRIPTION:\s*([\s\S]+?)(?=TAGS:|$)/);
   const tagsMatch = raw.match(/TAGS:\s*(.+)/);
-  const thumbnailMatch = raw.match(/THUMBNAIL:\s*(.+)/);  // 추가
+  const thumbnailMatch = raw.match(/THUMBNAIL:\s*(.+)/); // 추가
   const channelTag = genre.channelName ? genre.channelName.toLowerCase() : '';
-  const baseTags = tagsMatch ? tagsMatch[1].split(',').map((t) => t.trim()) : ['shorts'];
+  const baseTags = tagsMatch
+    ? tagsMatch[1].split(',').map((t) => t.trim())
+    : ['shorts'];
   const allTags = channelTag ? [channelTag, ...baseTags] : baseTags;
 
   const baseDesc = descMatch ? descMatch[1].trim() : '';
