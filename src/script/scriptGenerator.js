@@ -40,6 +40,10 @@ Title rules:
 - Use specific names or places when possible
 - Create immediate curiosity
 - NO slow descriptive titles
+- MAXIMUM 40 characters (HARD LIMIT — count every character)
+- Short, punchy, incomplete sentences work best
+- Good: "She Vanished. No Memory."
+- Bad: "She Vanished 12 Days. Then Reappeared With No Memory."
 - Good examples:
   "She Vanished. Her Car Was Still Running."
   "9 Hikers Died. No One Knows Why."
