@@ -3,16 +3,16 @@ const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 const { getGenre, DEFAULT_GENRE } = require('../genres');
+const { resolveThumbnailFont } = require('../utils/fontRoles');
 
 const WIDTH = 1280;
 const HEIGHT = 720;
 
-// Bebas Neue 폰트 등록
-const FONT_PATH = path.join(__dirname, '../../assets/fonts/Anton-Regular.ttf');
-if (fs.existsSync(FONT_PATH)) {
-  GlobalFonts.registerFromPath(FONT_PATH, 'Anton');
+const _thumbFont = resolveThumbnailFont();
+if (_thumbFont.exists) {
+  GlobalFonts.registerFromPath(_thumbFont.filePath, _thumbFont.family);
 }
-const TITLE_FONT = fs.existsSync(FONT_PATH) ? 'Anton' : 'BebasNeue';
+const TITLE_FONT = _thumbFont.exists ? _thumbFont.family : 'Arial';
 
 function wrapText(ctx, text, maxWidth) {
   const words = text.split(' ');
@@ -206,24 +206,19 @@ if (require.main === module) {
 
   const samples = {
     mystery: {
-      text: 'LIGHTHOUSE KEEPERS VANISHED', // 짧게
-      query: 'dark lighthouse foggy night ocean', // 분위기 맞는 쿼리
-    },
-    psychology: {
-      text: 'YOUR BRAIN LIES TO YOU', // 짧게
-      query: 'dark corridor shadow human silhouette', // 분위기 맞는 쿼리
+      text: 'LIGHTHOUSE KEEPERS VANISHED',
+      query: 'dark lighthouse foggy night ocean',
     },
   };
 
   (async () => {
-    for (const genre of ['mystery', 'psychology']) {
-      const p = await generateThumbnail(
-        samples[genre].text,
-        outDir,
-        genre,
-        samples[genre].query,
-      );
-      console.log(`${genre}: ${p}`);
-    }
+    const genre = 'mystery';
+    const p = await generateThumbnail(
+      samples[genre].text,
+      outDir,
+      genre,
+      samples[genre].query,
+    );
+    console.log(`${genre}: ${p}`);
   })();
 }

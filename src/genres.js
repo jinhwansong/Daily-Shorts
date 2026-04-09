@@ -7,11 +7,12 @@ const GENRES = {
     label: 'Mystery & Horror',
     channelName: 'Noctivault',
     promptFile: path.join(__dirname, '../prompts/mystery.txt'),
-    topicInstruction: `Generate exactly {count} unique, real-life mystery topics for YouTube Shorts. 
-Focus on obscure but documented true crime, unsolved disappearances, and disturbing historical anomalies. 
-Each topic must include a specific name, location, or year (e.g., "The 1977 Girl Scout Camp Murders" or "The Disappearance of Lars Mittank"). 
-Prioritize cases with "unexplainable evidence" like eerie last photos, strange phone calls, or impossible crime scenes to maximize curiosity. 
-Avoid generic urban legends; stick to creepy reality that feels 100% authentic.`,
+    topicInstruction: `Generate exactly {count} unique, real-life mystery topics for YouTube Shorts aimed at a US / English-speaking audience.
+Each topic must be a DOCUMENTED true case only: real crime, disappearance, unexplained death, or historical anomaly. No fiction, no urban legends, no creepypasta.
+Prioritize cases that are RECOGNIZABLE to viewers who watch popular US true-crime and mystery Shorts (widely covered in news, documentaries, or major podcasts)—the kind of name or incident people might search on YouTube. Famous unsolved or iconic unexplained events work well.
+Each topic line must include a specific person name, place, or year so the script can stay concrete.
+Add one sharp "hook angle" in the topic line when possible: eerie evidence, impossible detail, last known fact, or paradox—something that supports a 2-second scroll-stopping hook.
+Avoid hyper-obscure local stories unknown outside that region unless they already broke big online. Avoid generic legends with no documented victims or sources.`,
     videoQueries: [
       'police tape crime scene', // 실제 미스터리 느낌 강화
       'security camera footage eerie', // CCTV 느낌은 몰입감이 높음
@@ -42,29 +43,6 @@ Avoid generic urban legends; stick to creepy reality that feels 100% authentic.`
     bgmFile: path.join(__dirname, '../assets/bgm/mystery.mp3'),
     /** Freesound 검색어 (CC0만 자동 선택) */
     freesoundBgmQuery: 'dark cinematic tension heart beat ticking clock',
-  },
-
-  psychology: {
-    label: 'Dark Psychology',
-    promptFile: path.join(__dirname, '../prompts/psychology.txt'),
-    topicInstruction: `Generate exactly {count} unique dark psychology or human behavior topics for YouTube Shorts.
-Each topic should be based on real psychological research and make people question themselves.
-Draw from: cognitive biases, manipulation tactics, disturbing experiments, social psychology, subconscious behavior, dark personality traits.`,
-    videoQueries: [
-      'human silhouette dark',
-      'brain scan glow',
-      'mirror reflection dark',
-      'crowd people blur',
-      'shadow person',
-      'dark room single light',
-      'eye closeup dramatic',
-    ],
-    thumbnailColor: '#0a0a1a',
-    thumbnailAccent: '#8e44ad',
-    /** 심리학용 로컬 BGM 풀 — mp3만 넣으면 Freesound 실패 시 무작위 */
-    bgmDir: path.join(__dirname, '../assets/bgm/psychology'),
-    bgmFile: path.join(__dirname, '../assets/bgm/psychology.mp3'),
-    freesoundBgmQuery: 'calm ambient soft subtle meditation',
   },
 };
 

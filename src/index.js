@@ -11,7 +11,7 @@ const {
   mustAppendFreesoundCredit,
   buildFreesoundAttributionLine,
 } = require('./audio/freesoundBgm');
-const { fetchBackgroundVideo } = require('./video/videoFetcher');
+const { fetchBackgroundVideo, fetchTwoBackgroundVideos } = require('./video/videoFetcher');
 const { generateSubtitles, srtToAss } = require('./video/subtitleGenerator');
 const { composeVideo } = require('./video/videoComposer');
 const { generateThumbnail } = require('./video/thumbnailGenerator');
@@ -20,6 +20,12 @@ const { runCopyrightGuard } = require('./utils/copyrightGuard');
 const { getAttributionFooter } = require('./utils/attributionFooter');
 const { pickRandomLocalBgm, listMp3InDir } = require('./utils/localBgm');
 const { runDryRunPipeline } = require('./utils/dryRunPipeline');
+const { normalizeLevel } = require('./utils/contentIntensity');
+const {
+  isDualBackgroundOn,
+  isKenBurnsOn,
+  isAudioLoudnormOn,
+} = require('./utils/videoPipelineEnv');
 
 const UPLOAD_COUNT = parseInt(process.env.DAILY_UPLOAD_COUNT || '5', 10);
 const REPO_ROOT = path.join(__dirname, '..');
@@ -38,11 +44,26 @@ async function runPipeline(topic, genreKey) {
   fs.writeFileSync(path.join(outputDir, 'script.txt'), script);
   fs.writeFileSync(path.join(outputDir, 'metadata.json'), JSON.stringify(metadata, null, 2));
   console.log(`  Title: ${metadata.title}`);
+  if (metadata.thumbnailLine) {
+    console.log(`  Thumbnail line: ${metadata.thumbnailLine}`);
+  }
 
-  // TTS + 배경 영상 (병렬)
+  // TTS + 배경 영상 (병렬) — 듀얼 클립 시 전·후반 각각 다른 Pexels 파일
+  let videoPath2 = null;
   const [audioPath, videoPath] = await Promise.all([
     generateTTS(script, outputDir),
-    fetchBackgroundVideo(outputDir, genreKey),
+    (async () => {
+      if (isDualBackgroundOn()) {
+        const pair = await fetchTwoBackgroundVideos(
+          outputDir,
+          genreKey,
+          metadata.thumbnailQuery || null
+        );
+        videoPath2 = pair[1];
+        return pair[0];
+      }
+      return fetchBackgroundVideo(outputDir, genreKey, metadata.thumbnailQuery || null);
+    })(),
   ]);
 
   // 자막
@@ -54,7 +75,7 @@ async function runPipeline(topic, genreKey) {
   const freesound = await fetchFreesoundBgm(outputDir, genreKey);
   if (freesound) {
     bgmPath = freesound.path;
-    // CC BY(Attribution)는 표기 의무 → FREESOUND_APPEND_CREDIT=0 이라도 설명에 출처 포함
+    // CC BY(Attribution)는 표기 의무 → pipelineDefaults 의 FREESOUND_APPEND_CREDIT=0 이라도 설명에 출처 포함
     if (mustAppendFreesoundCredit(freesound.meta) && freesound.attributionLine) {
       metadata.description = `${metadata.description}\n\n${freesound.attributionLine}`;
       fs.writeFileSync(path.join(outputDir, 'metadata.json'), JSON.stringify(metadata, null, 2));
@@ -95,18 +116,25 @@ async function runPipeline(topic, genreKey) {
     fs.writeFileSync(path.join(outputDir, 'metadata.json'), JSON.stringify(metadata, null, 2));
   }
 
-  // 썸네일 생성 (FFmpeg 합성과 병렬)
-  const hookText = metadata.title.length > 35
-  ? metadata.title.substring(0, 35).trim() + '...'
-  : metadata.title;
+  // 썸네일 카피: THUMBNAIL_LINE(자극적) 우선, 없으면 제목
+  const hookSource = (metadata.thumbnailLine && String(metadata.thumbnailLine).trim()) || metadata.title;
+  const hookText =
+    hookSource.length > 42 ? `${hookSource.substring(0, 42).trim()}…` : hookSource;
 
   const [finalPath, thumbnailPath] = await Promise.all([
-  composeVideo(videoPath, audioPath, assPath, outputDir, { bgmPath }),
-  generateThumbnail(hookText, outputDir, genreKey, metadata.thumbnailQuery || null),
-]);
+    composeVideo(videoPath, audioPath, assPath, outputDir, {
+      bgmPath,
+      backgroundPath2: videoPath2,
+    }),
+    generateThumbnail(hookText, outputDir, genreKey, metadata.thumbnailQuery || null),
+  ]);
+
+  console.log(
+    `  FFmpeg: dual_bg=${isDualBackgroundOn()} ken_burns=${isKenBurnsOn()} loudnorm=${isAudioLoudnormOn()}`
+  );
 
   // 저작권 가드 (업로드 전 자동 검증)
-  runCopyrightGuard(outputDir, { videoPath, audioPath, thumbnailPath, script });
+  runCopyrightGuard(outputDir, { videoPath, videoPath2, audioPath, thumbnailPath, script });
 
   // 업로드 직전: 메타 JSON 기준으로 출처가 설명에 없으면 보강 (CC BY는 필수)
   const fsMetaPath = path.join(outputDir, 'freesound_bgm.json');
@@ -136,7 +164,7 @@ async function runPipeline(topic, genreKey) {
 }
 
 async function runBatch(genreKey, count = UPLOAD_COUNT) {
-  console.log(`\n=== ${getGenre(genreKey).label} | ${count} video(s) ===`);
+  console.log(`\n=== ${getGenre(genreKey).label} | ${count} video(s) | hook: ${normalizeLevel()} ===`);
   const topics = await generateTopics(count, genreKey);
 
   const results = [];
@@ -182,8 +210,8 @@ if (args.includes('--dry-run')) {
   console.log('Usage:');
   console.log('  node src/index.js --dry-run [--genre=mystery]   # 비용 없음 (FFmpeg 필요)');
   console.log('  node src/index.js --run-once [--genre=mystery]');
-  console.log('  node src/index.js --run-daily [--genre=psychology] [--count=5]');
-  console.log('Genres: mystery | psychology');
+  console.log('  node src/index.js --run-daily [--genre=mystery] [--count=5]');
+  console.log('Genres: mystery');
 }
 
 module.exports = { runPipeline, runBatch, runDryRunPipeline };

@@ -25,6 +25,8 @@ jobs:
       YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
       YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
       YOUTUBE_REFRESH_TOKEN_MYSTERY: ${{ secrets.YOUTUBE_REFRESH_TOKEN_MYSTERY }}
+      # 선택: private(기본) | unlisted | public — 비우면 코드 기본(private)
+      YOUTUBE_PRIVACY_STATUS: ${{ secrets.YOUTUBE_PRIVACY_STATUS }}
       # 선택: Freesound CC0 배경음 — 비워 두면 로컬 assets/bgm 또는 무 BGM
       FREESOUND_API_KEY: ${{ secrets.FREESOUND_API_KEY }}
       # 선택: 설명란 하단 고정 저작권·출처 (Repository secret, 여러 줄 가능)

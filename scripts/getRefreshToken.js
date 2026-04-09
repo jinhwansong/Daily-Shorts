@@ -3,11 +3,9 @@
  *
  * 사용법:
  *   node scripts/getRefreshToken.js --channel=mystery
- *   node scripts/getRefreshToken.js --channel=psychology
  *
- * 각 채널마다 한 번씩 실행 → 나온 refresh_token을 .env에 저장
+ * 나온 refresh_token을 .env에 저장:
  *   YOUTUBE_REFRESH_TOKEN_MYSTERY=...
- *   YOUTUBE_REFRESH_TOKEN_PSYCHOLOGY=...
  */
 
 require('dotenv').config({ path: require('path').join(__dirname, '../.env') });
@@ -16,10 +14,10 @@ const readline = require('readline');
 
 const args = process.argv.slice(2);
 const channelArg = (args.find((a) => a.startsWith('--channel=')) || '').replace('--channel=', '');
-const VALID_CHANNELS = ['mystery', 'psychology'];
+const VALID_CHANNELS = ['mystery'];
 
 if (!channelArg || !VALID_CHANNELS.includes(channelArg)) {
-  console.error(`사용법: node scripts/getRefreshToken.js --channel=<mystery|psychology>`);
+  console.error('사용법: node scripts/getRefreshToken.js --channel=mystery');
   process.exit(1);
 }
 

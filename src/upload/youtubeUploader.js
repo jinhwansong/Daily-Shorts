@@ -6,10 +6,19 @@ function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+const YOUTUBE_PRIVACY_ALLOWED = new Set(['private', 'unlisted', 'public']);
+
+/** 기본 private — 스튜디오에서 저작권·제한 안내 확인 후 직접 공개할 때 사용 */
+function resolvePrivacyStatus() {
+  const raw = (process.env.YOUTUBE_PRIVACY_STATUS || 'private').toString().trim().toLowerCase();
+  if (YOUTUBE_PRIVACY_ALLOWED.has(raw)) return raw;
+  console.warn(`[YouTube] YOUTUBE_PRIVACY_STATUS="${raw}" 는 무시되고 private 로 업로드합니다. (허용: private, unlisted, public)`);
+  return 'private';
+}
+
 // 장르별로 다른 Refresh Token을 사용해 각각의 채널에 업로드
 const REFRESH_TOKEN_MAP = {
   mystery: process.env.YOUTUBE_REFRESH_TOKEN_MYSTERY,
-  psychology: process.env.YOUTUBE_REFRESH_TOKEN_PSYCHOLOGY,
 };
 
 function getYouTubeClient(genreKey) {
@@ -47,6 +56,7 @@ function buildDescription(description, tags) {
 async function uploadVideo(videoPath, { title, description, tags }, genreKey = 'mystery') {
   const youtube = getYouTubeClient(genreKey);
   const fullDescription = buildDescription(description, tags);
+  const privacyStatus = resolvePrivacyStatus();
   const response = await youtube.videos.insert({
     part: ['snippet', 'status'],
     requestBody: {
@@ -58,13 +68,16 @@ async function uploadVideo(videoPath, { title, description, tags }, genreKey = '
         defaultLanguage: 'en',
       },
       status: {
-        privacyStatus: 'public',
+        privacyStatus,
         selfDeclaredMadeForKids: false,
       },
     },
     media: { body: fs.createReadStream(videoPath) },
   });
   const videoId = response.data.id;
+  console.log(
+    `[YouTube] 업로드 완료 (${privacyStatus}) — 스튜디오에서 저작권·제한 안내·설명란(스크립트) 확인 후 공개하세요.`
+  );
   return { videoId, videoUrl: `https://www.youtube.com/shorts/${videoId}` };
 }
 

@@ -6,7 +6,7 @@ const path = require('path');
  * 파이프라인 구조상 조건이 이미 충족되어 있지만,
  * 조건이 깨진 경우(파일 누락, 외부 오디오 삽입 등) 업로드를 차단합니다.
  */
-function runCopyrightGuard(outputDir, { videoPath, audioPath, thumbnailPath, script }) {
+function runCopyrightGuard(outputDir, { videoPath, videoPath2, audioPath, thumbnailPath, script }) {
   const checks = [];
   const errors = [];
 
@@ -17,10 +17,17 @@ function runCopyrightGuard(outputDir, { videoPath, audioPath, thumbnailPath, scr
 
   // 1. 배경 영상: Pexels API 다운로드 결과물인지 (파일명 확인)
   const bgExists = videoPath && fs.existsSync(videoPath);
+  const bn = bgExists ? path.basename(videoPath) : '';
+  const b2Ok =
+    videoPath2 &&
+    fs.existsSync(videoPath2) &&
+    path.basename(videoPath2) === 'background_b.mp4';
+  const bgOkSingle = bgExists && bn === 'background.mp4';
+  const bgOkDual = bgExists && bn === 'background_a.mp4' && b2Ok;
   check(
     'Pexels CC0 배경 영상',
-    bgExists && path.basename(videoPath) === 'background.mp4',
-    bgExists ? '' : '파일 없음'
+    bgOkSingle || bgOkDual,
+    bgExists ? (bgOkSingle || bgOkDual ? '' : `파일명: ${bn}`) : '파일 없음'
   );
 
   // 2. 음성: OpenAI TTS 결과물인지 (파일명 확인)

@@ -23,6 +23,7 @@ STYLE:
 - Simple English
 - No slow buildup
 - No cinematic descriptions
+- Tone: US YouTube mystery / true-crime Shorts — urgent, plainspoken narrator; not a slow documentary lecture
 
 STRUCTURE:
 
@@ -47,4 +48,14 @@ STRICT RULES:
 - DO NOT use complex words
 - DO NOT include CTA
 - DO NOT include hashtags or labels
+
+VICTIMS, REPUTATION, AND FACTS (non-negotiable):
+- Do not mock, humiliate, or sexualize real victims, survivors, or their families.
+- Do not treat rumors, unverified posts, or speculation as fact. If a detail is not well documented in reputable sources, OMIT it—never invent or exaggerate for shock.
+- Do not falsely frame a specific person as the perpetrator when that is not established in the public record you are drawing from; prefer "unidentified," "unknown," or "never convicted" where appropriate.
+- Keep a cold documentary Shorts tone—tension from facts, not cruelty toward people involved.
+
+ORIGINALITY:
+- Use your own short sentences. Do not copy long phrases or unique wording from a single news article, documentary, or blog.
+
 - Output the script ONLY

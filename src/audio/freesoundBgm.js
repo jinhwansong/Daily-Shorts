@@ -2,13 +2,14 @@ const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 const { getGenre, DEFAULT_GENRE } = require('../genres');
+const { freesoundAllowAttribution, freesoundAppendCredit } = require('../utils/pipelineDefaults');
 
 const API = 'https://freesound.org/apiv2';
 
 /** NC(비상업)는 기본 제외. 호출마다 새 Set (모듈 Set 오염 방지) */
 function getAllowedLicenses() {
   const s = new Set(['Creative Commons 0']);
-  if (process.env.FREESOUND_ALLOW_ATTRIBUTION === '1') s.add('Attribution');
+  if (freesoundAllowAttribution()) s.add('Attribution');
   return s;
 }
 
@@ -61,7 +62,7 @@ function buildFreesoundAttributionLine(meta) {
 function mustAppendFreesoundCredit(meta) {
   if (!meta || !meta.license) return false;
   if (meta.license === 'Attribution') return true;
-  return process.env.FREESOUND_APPEND_CREDIT !== '0';
+  return freesoundAppendCredit();
 }
 
 /**
@@ -87,7 +88,7 @@ async function fetchFreesoundBgm(outputDir, genreKey = DEFAULT_GENRE) {
   const token = process.env.FREESOUND_API_KEY;
   if (!token || !token.trim()) return null;
 
-  const allowAttribution = process.env.FREESOUND_ALLOW_ATTRIBUTION === '1';
+  const allowAttribution = freesoundAllowAttribution();
   const allowedLicenses = getAllowedLicenses();
 
   const genre = getGenre(genreKey);
@@ -103,10 +104,7 @@ async function fetchFreesoundBgm(outputDir, genreKey = DEFAULT_GENRE) {
   const searchPlans = [];
 
   const sharedFallbacks = ['ambient loop', 'ambient', 'soundscape', 'music', 'loop'];
-  const moodFallbacks =
-    genreKey === 'psychology'
-      ? ['calm', 'soft', 'meditation', 'subtle', 'minimal']
-      : ['dark ambient', 'drone', 'dark', 'tension'];
+  const moodFallbacks = ['dark ambient', 'drone', 'dark', 'tension'];
   const baseQueries = [primaryQuery, ...sharedFallbacks, ...moodFallbacks];
 
   const durationTiers = [
