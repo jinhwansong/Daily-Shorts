@@ -118,7 +118,7 @@ async function setThumbnail(videoId, thumbnailPath, genreKey = 'mystery') {
     `[YouTube] 썸네일 적용 실패 — 영상은 올라갔습니다. 스튜디오에서 수동 설정하거나, ` +
       `계정에 전화 인증(커스텀 썸네일 권한)과 OAuth 토큰을 확인하세요. (${lastErr?.message || lastErr})`
   );
-  throw lastErr;
+  // 업로드는 이미 성공했으므로 throw 하지 않음 (파이프라인이 "업로드 실패"로 오인하지 않도록)
 }
 
 module.exports = { uploadVideo, setThumbnail };

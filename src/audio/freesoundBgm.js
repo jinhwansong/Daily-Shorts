@@ -6,11 +6,37 @@ const { freesoundAllowAttribution, freesoundAppendCredit } = require('../utils/p
 
 const API = 'https://freesound.org/apiv2';
 
+/**
+ * Freesound는 license 를 짧은 이름("Creative Commons 0") 또는 CC URL 로 줍니다.
+ * 검색/검증 필터는 정규화된 이름으로만 맞춥니다.
+ */
+function normalizeFreesoundLicense(license) {
+  if (!license || typeof license !== 'string') return null;
+  const t = license.trim();
+  if (t === 'Creative Commons 0') return 'Creative Commons 0';
+  if (t === 'Attribution') return 'Attribution';
+
+  const lower = t.toLowerCase();
+  if (lower.includes('publicdomain/zero') || lower.includes('public domain zero')) {
+    return 'Creative Commons 0';
+  }
+  if (lower.includes('/licenses/by/')) {
+    if (lower.includes('by-nc') || lower.includes('by_nc')) return null;
+    return 'Attribution';
+  }
+  return null;
+}
+
 /** NC(비상업)는 기본 제외. 호출마다 새 Set (모듈 Set 오염 방지) */
 function getAllowedLicenses() {
   const s = new Set(['Creative Commons 0']);
   if (freesoundAllowAttribution()) s.add('Attribution');
   return s;
+}
+
+function isLicenseAllowed(license, allowedSet) {
+  const norm = normalizeFreesoundLicense(license);
+  return !!(norm && allowedSet.has(norm));
 }
 
 function shuffle(arr) {
@@ -46,11 +72,12 @@ function buildFreesoundAttributionLine(meta) {
   const url = meta.url || `https://freesound.org/s/${meta.soundId}/`;
   const name = meta.name || 'Sound';
   const user = meta.username || 'unknown';
+  const lic = normalizeFreesoundLicense(meta.license) || meta.license;
 
-  if (meta.license === 'Creative Commons 0') {
+  if (lic === 'Creative Commons 0') {
     return `BGM: "${name}" — Freesound / ${user} (CC0). ${url}`;
   }
-  if (meta.license === 'Attribution') {
+  if (lic === 'Attribution') {
     return (
       `Background music: "${name}" by ${user} — ${url} ` +
       `(Freesound · CC BY 4.0 / Attribution — license terms: https://creativecommons.org/licenses/by/4.0/)`
@@ -61,7 +88,8 @@ function buildFreesoundAttributionLine(meta) {
 
 function mustAppendFreesoundCredit(meta) {
   if (!meta || !meta.license) return false;
-  if (meta.license === 'Attribution') return true;
+  const lic = normalizeFreesoundLicense(meta.license) || meta.license;
+  if (lic === 'Attribution') return true;
   return freesoundAppendCredit();
 }
 
@@ -152,17 +180,15 @@ async function fetchFreesoundBgm(outputDir, genreKey = DEFAULT_GENRE) {
 
       const results = data.results || [];
       const candidates = shuffle(
-        results.filter((s) => {
-          if (!s || !allowedLicenses.has(s.license)) return false;
-          return true;
-        })
+        results.filter((s) => s && isLicenseAllowed(s.license, allowedLicenses))
       );
 
       if (candidates.length === 0) {
         if (results.length > 0) {
           const sample = results[0];
+          const norm = normalizeFreesoundLicense(sample.license);
           lastErr = new Error(
-            `후보 ${results.length}개인데 라이선스 필터에서 제외됨 (예: ${sample.license || '?'})`
+            `후보 ${results.length}개인데 라이선스 필터에서 제외됨 (예: ${sample.license || '?'}${norm ? ` → 정규화: ${norm}` : ''})`
           );
         } else {
           lastErr = new Error(`CC0 결과 없음 (${plan.label})`);
@@ -177,7 +203,7 @@ async function fetchFreesoundBgm(outputDir, genreKey = DEFAULT_GENRE) {
           continue;
         }
         const s = verified.sound;
-        if (!allowedLicenses.has(s.license)) {
+        if (!isLicenseAllowed(s.license, allowedLicenses)) {
           console.warn(
             `  ⚠ Freesound id ${pick.id}: 재검증 라이선스 "${s.license}" — 허용 목록에 없어 건너뜀`
           );
@@ -209,12 +235,14 @@ async function fetchFreesoundBgm(outputDir, genreKey = DEFAULT_GENRE) {
         }
         fs.writeFileSync(mp3Path, Buffer.from(audioRes.data));
 
+        const licenseNorm = normalizeFreesoundLicense(s.license);
         const meta = {
           source: 'freesound',
           soundId: s.id,
           name: s.name,
           username: s.username,
-          license: s.license,
+          license: licenseNorm || s.license,
+          licenseRaw: s.license !== licenseNorm ? s.license : undefined,
           url: s.url || `https://freesound.org/s/${s.id}/`,
           queryUsed: plan.label,
           verifiedAt: new Date().toISOString(),
@@ -223,7 +251,7 @@ async function fetchFreesoundBgm(outputDir, genreKey = DEFAULT_GENRE) {
 
         const attributionLine = buildFreesoundAttributionLine(meta);
 
-        console.log(`  🎵 Freesound BGM: ${s.name} (id ${s.id}, ${s.license})`);
+        console.log(`  🎵 Freesound BGM: ${s.name} (id ${s.id}, ${meta.license})`);
         return { path: mp3Path, attributionLine, meta };
       }
     } catch (e) {
@@ -242,4 +270,5 @@ module.exports = {
   buildFreesoundAttributionLine,
   mustAppendFreesoundCredit,
   getAllowedLicenses,
+  normalizeFreesoundLicense,
 };

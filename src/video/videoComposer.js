@@ -25,6 +25,13 @@ const OUTPUT_HEIGHT = 1920;
 
 function getAudioDuration(audioPath) {
   const resolved = path.resolve(audioPath);
+  if (!fs.existsSync(resolved)) {
+    throw new Error(`Audio file not found: ${resolved}`);
+  }
+  const size = fs.statSync(resolved).size;
+  if (size < 64) {
+    throw new Error(`Audio file empty or too small (${size} B): ${resolved}`);
+  }
   const r = spawnSync(
     'ffprobe',
     [
@@ -39,7 +46,14 @@ function getAudioDuration(audioPath) {
     { encoding: 'utf-8' }
   );
   if (r.status !== 0) {
-    throw new Error(r.stderr || `ffprobe failed: ${resolved}`);
+    const fromSpawn = r.error ? String(r.error.message || r.error) : '';
+    const fromFf = (r.stderr || '').trim();
+    const detail = [fromFf, fromSpawn].filter(Boolean).join(' | ') || 'no stderr';
+    const winHint =
+      process.platform === 'win32'
+        ? ' Windows에서는 FFmpeg 전체를 설치하고 PATH에 ffprobe.exe 가 잡혀야 합니다. (winget install ffmpeg 또는 https://www.gyan.dev/ffmpeg/builds/ )'
+        : '';
+    throw new Error(`ffprobe failed: ${resolved} — ${detail}${winHint}`);
   }
   const sec = parseFloat(String(r.stdout).trim());
   if (Number.isNaN(sec)) throw new Error('Could not parse audio duration');

@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { normalizeFreesoundLicense } = require('../audio/freesoundBgm');
 
 /**
  * 업로드 직전 저작권 안전 조건을 검증하고 감사 로그를 반환합니다.
@@ -56,9 +57,10 @@ function runCopyrightGuard(outputDir, { videoPath, videoPath2, audioPath, thumbn
     try {
       if (fs.existsSync(fsMeta)) {
         const m = JSON.parse(fs.readFileSync(fsMeta, 'utf-8'));
+        const licNorm = normalizeFreesoundLicense(m.license || m.licenseRaw);
         const allowed =
           m.source === 'freesound' &&
-          (m.license === 'Creative Commons 0' || m.license === 'Attribution');
+          (licNorm === 'Creative Commons 0' || licNorm === 'Attribution');
         const blockedNc = m.license === 'Attribution NonCommercial';
         ok = allowed && !blockedNc;
         if (!ok) detail = blockedNc ? 'NonCommercial 라이선스 불가' : `라이선스: ${m.license || '?'}`;
@@ -94,9 +96,11 @@ function runCopyrightGuard(outputDir, { videoPath, videoPath2, audioPath, thumbn
   fs.writeFileSync(path.join(outputDir, 'copyright_audit.json'), JSON.stringify(audit, null, 2));
 
   if (errors.length > 0) {
+    const auditPath = path.join(outputDir, 'copyright_audit.json');
     console.error('\n⚠️  저작권 가드 실패 — 업로드 차단');
     errors.forEach((e) => console.error('  ' + e));
-    throw new Error('Copyright guard failed. Upload blocked.');
+    console.error(`  상세: ${auditPath}`);
+    throw new Error(`Copyright guard failed. Upload blocked. (${auditPath})`);
   }
 
   console.log('  ✅ 저작권 가드 통과');

@@ -2,6 +2,8 @@
  * 영상·오디오 후처리 플래그 (환경변수)
  */
 
+const { VIDEO } = require('./pipelineDefaults');
+
 function isTruthyEnv(key, defaultVal = false) {
   const raw = (process.env[key] ?? (defaultVal ? '1' : '0')).toString().trim().toLowerCase();
   if (['0', 'false', 'off', 'no'].includes(raw)) return false;
@@ -18,7 +20,7 @@ function isKenBurnsOn() {
 }
 
 function isDualBackgroundOn() {
-  return isTruthyEnv('VIDEO_DUAL_BACKGROUND', false);
+  return isTruthyEnv('VIDEO_DUAL_BACKGROUND', VIDEO.DUAL_BACKGROUND);
 }
 
 /** zoompan 프레임당 zoom 증가 (작을수록 미세) */
