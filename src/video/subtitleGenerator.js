@@ -20,7 +20,17 @@ function intEnv(key, def, min, max) {
 }
 
 /**
- * 쇼츠/틱톡 스타일에 가깝게: 굵은 글꼴·두꺼운 외곽선·그림자·하단 안전 여백
+ * ASS Alignment: 2 = bottom center, 8 = top center. Shorts/TikTok 모바일은 하단에 제목·채널명 등이 겹쳐 기본은 상단.
+ * @returns {{ alignment: number, defaultMarginV: number }}
+ */
+function subtitlePlacement() {
+  const raw = (process.env.SUBTITLE_PLACEMENT || 'top').trim().toLowerCase();
+  if (raw === 'bottom') return { alignment: 2, defaultMarginV: 135 };
+  return { alignment: 8, defaultMarginV: 150 };
+}
+
+/**
+ * 쇼츠/틱톡 스타일에 가깝게: 굵은 글꼴·두꺼운 외곽선·그림자·안전 여백(기본: 상단, 모바일 UI와 분리)
  * 폰트 파일은 assets/fonts/*.ttf 권장 + videoComposer subtitles fontsdir 연동
  */
 function buildAssStyleLine() {
@@ -32,12 +42,13 @@ function buildAssStyleLine() {
   const back = assColorFromEnv('SUBTITLE_BACK_ABGR', '&H80000000');
   const outlineW = intEnv('SUBTITLE_OUTLINE', 5, 0, 12);
   const shadow = intEnv('SUBTITLE_SHADOW', 3, 0, 8);
-  const marginV = intEnv('SUBTITLE_MARGIN_V', 135, 60, 280);
+  const { alignment, defaultMarginV } = subtitlePlacement();
+  const marginV = intEnv('SUBTITLE_MARGIN_V', defaultMarginV, 60, 280);
   const marginH = intEnv('SUBTITLE_MARGIN_LR', 48, 20, 200);
   const spacing = intEnv('SUBTITLE_SPACING', 1, 0, 20);
   const bold = process.env.SUBTITLE_BOLD === '0' ? 0 : -1;
 
-  return `Style: Default,${font},${size},${primary},${secondary},${outlineCol},${back},${bold},0,0,0,100,100,${spacing},0,1,${outlineW},${shadow},2,${marginH},${marginH},${marginV},1`;
+  return `Style: Default,${font},${size},${primary},${secondary},${outlineCol},${back},${bold},0,0,0,100,100,${spacing},0,1,${outlineW},${shadow},${alignment},${marginH},${marginH},${marginV},1`;
 }
 
 async function generateSubtitles(audioPath, outputDir) {
@@ -98,4 +109,4 @@ function srtTimeToAss(srtTime) {
     });
 }
 
-module.exports = { generateSubtitles, srtToAss, buildAssStyleLine };
+module.exports = { generateSubtitles, srtToAss, buildAssStyleLine, subtitlePlacement };

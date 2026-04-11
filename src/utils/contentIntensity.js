@@ -47,6 +47,7 @@ function metadataPromptAddon() {
 
 Packaging intensity — STRONG:
 - TITLE and THUMBNAIL_LINE may use a sharper curiosity gap and colder fragments typical of top US mystery Shorts—still must not assert anything the script does not support.
+- Do not drop the main searchable proper name from the TITLE just to sound edgier—keep early name/keyword + sharp fragment within the char limit.
 - THUMBNAIL_LINE: favor an unfinished or jarring phrase over a polite summary; stay under char limits.
 - No slurs; no misleading "police confirmed" unless the script says so.`;
 }

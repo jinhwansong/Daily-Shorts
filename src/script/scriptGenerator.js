@@ -44,10 +44,24 @@ YouTube TITLE rules:
 - MAXIMUM 55 characters (HARD LIMIT)
 - Punchy fragments beat long explanations
 
+SEARCH + Shorts FEED (both matter for this genre):
+- If the script is about a real, named case (person, place, ship, flight, well-known nickname), put that EXACT searchable name or phrase as EARLY as possible in the TITLE (ideally in the first half, still within 55 chars). Many viewers type the name in YouTube search, not a documentary-style phrase alone.
+- Do NOT bury the only recognizable search token at the very end or hide it behind vague wording only (e.g. if the script is clearly about one famous missing person, the title should contain their name or the case name viewers search, not only generic words like "The Vanishing" with no name).
+- THUMBNAIL_LINE can stay more emotional or fragmentary; let the TITLE carry the literal name/keyword when the case has one.
+
+DESCRIPTION rules:
+- First sentence must naturally include the same core name or case identifier the script is about (one clear phrase—no keyword stuffing). Helps search previews and viewers who clicked from search see they are in the right video.
+
+TAGS rules:
+- Include 2–3 tags that are literal searchable phrases or proper names from the script (when applicable), plus broader mystery/true-crime tags.
+
 THUMBNAIL_LINE rules (on-image text, very short):
 - MAXIMUM 34 characters (HARD LIMIT)
 - 2–6 words ideal; can feel more aggressive than TITLE (e.g. unfinished thought, single shocking phrase)
 - No hashtags; no quotes in the line
+
+Topic line (source of truth for names/places—TITLE and tags should align with it when the script matches):
+${topic}
 
 Script:
 ${script}
