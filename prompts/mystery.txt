@@ -49,11 +49,20 @@ STRICT RULES:
 - DO NOT include CTA
 - DO NOT include hashtags or labels
 
+STRICT RULES ON FACTS:
+- Use ONLY verified, documented historical facts
+- NEVER invent or exaggerate details not in historical record
+- NEVER add fictional elements to real cases
+- If uncertain about a detail, omit it entirely
+- Stick to what is publicly documented
+
 VICTIMS, REPUTATION, AND FACTS (non-negotiable):
 - Do not mock, humiliate, or sexualize real victims, survivors, or their families.
 - Do not treat rumors, unverified posts, or speculation as fact. If a detail is not well documented in reputable sources, OMIT it—never invent or exaggerate for shock.
 - Do not falsely frame a specific person as the perpetrator when that is not established in the public record you are drawing from; prefer "unidentified," "unknown," or "never convicted" where appropriate.
 - Keep a cold documentary Shorts tone—tension from facts, not cruelty toward people involved.
+
+
 
 ORIGINALITY:
 - Use your own short sentences. Do not copy long phrases or unique wording from a single news article, documentary, or blog.

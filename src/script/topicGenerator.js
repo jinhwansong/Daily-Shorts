@@ -27,6 +27,16 @@ function saveUsedTopics(genreKey, topics) {
   fs.writeFileSync(file, JSON.stringify(topics.slice(-200), null, 2));
 }
 
+/** mystery 전용: 생성 토픽이 실제로 미해결·미설명으로 남은 사건인지 모델에 강제 */
+function mysteryUnresolvedTopicsAddon(genreKey) {
+  if (genreKey !== 'mystery') return '';
+  return `
+Unresolved cases only (non-negotiable):
+- Each topic must describe a real case that is still unresolved in reputable public sources: perpetrator not identified or not convicted for the crime, person still missing, or the core incident still lacks a widely accepted explanation.
+- Do NOT use cases that are clearly solved, closed, or fully explained (accepted conviction, missing person found with an established account, mystery debunked by mainstream investigation).
+- If you are unsure whether a case remains unresolved, omit it and choose a different well-documented unsolved case.`;
+}
+
 async function generateTopics(count = 1, genreKey = DEFAULT_GENRE) {
   const genre = getGenre(genreKey);
   const usedTopics = loadUsedTopics(genreKey);
@@ -46,7 +56,7 @@ async function generateTopics(count = 1, genreKey = DEFAULT_GENRE) {
       {
         role: 'user',
         content: `${instruction}
-${topicPromptAddon()}${avoidContext}
+${mysteryUnresolvedTopicsAddon(genreKey)}${topicPromptAddon()}${avoidContext}
 Rules:
 - Each topic must be distinct in setting, theme, and tone
 - Write each as one punchy sentence (max 20 words)
