@@ -30,25 +30,29 @@ function subtitlePlacement() {
 }
 
 /**
- * 쇼츠/틱톡 스타일에 가깝게: 굵은 글꼴·두꺼운 외곽선·그림자·안전 여백(기본: 상단, 모바일 UI와 분리)
- * 폰트 파일은 assets/fonts/*.ttf 권장 + videoComposer subtitles fontsdir 연동
+ * 쇼츠/틱톡 스타일: 굵은 글꼴·굵은 외곽선·기본 순흰 글자(밝은 배경·상단 자막에서도 대비 확보)
+ * BorderStyle 3 + SUBTITLE_BACK_BOX: 글 뒤 반투명 박스(선택)
  */
 function buildAssStyleLine() {
   const font = resolveSubtitleFontFamily() || 'Arial';
   const size = intEnv('SUBTITLE_FONT_SIZE', 78, 48, 120);
-  const primary = assColorFromEnv('SUBTITLE_PRIMARY_ABGR', '&H00F5F5F5');
+  const rawBox = (process.env.SUBTITLE_BACK_BOX || '').trim().toLowerCase();
+  const useBackBox = rawBox === '1' || rawBox === 'true' || rawBox === 'yes';
+  const borderStyle = useBackBox ? 3 : 1;
+  const backDefault = useBackBox ? '&HAA000000' : '&H80000000';
+  const primary = assColorFromEnv('SUBTITLE_PRIMARY_ABGR', '&H00FFFFFF');
   const secondary = assColorFromEnv('SUBTITLE_SECONDARY_ABGR', '&H000000FF');
   const outlineCol = assColorFromEnv('SUBTITLE_OUTLINE_ABGR', '&H00000000');
-  const back = assColorFromEnv('SUBTITLE_BACK_ABGR', '&H80000000');
-  const outlineW = intEnv('SUBTITLE_OUTLINE', 5, 0, 12);
-  const shadow = intEnv('SUBTITLE_SHADOW', 3, 0, 8);
+  const back = assColorFromEnv('SUBTITLE_BACK_ABGR', backDefault);
+  const outlineW = intEnv('SUBTITLE_OUTLINE', 6, 0, 12);
+  const shadow = intEnv('SUBTITLE_SHADOW', 4, 0, 8);
   const { alignment, defaultMarginV } = subtitlePlacement();
   const marginV = intEnv('SUBTITLE_MARGIN_V', defaultMarginV, 60, 280);
   const marginH = intEnv('SUBTITLE_MARGIN_LR', 48, 20, 200);
   const spacing = intEnv('SUBTITLE_SPACING', 1, 0, 20);
   const bold = process.env.SUBTITLE_BOLD === '0' ? 0 : -1;
 
-  return `Style: Default,${font},${size},${primary},${secondary},${outlineCol},${back},${bold},0,0,0,100,100,${spacing},0,1,${outlineW},${shadow},${alignment},${marginH},${marginH},${marginV},1`;
+  return `Style: Default,${font},${size},${primary},${secondary},${outlineCol},${back},${bold},0,0,0,100,100,${spacing},0,${borderStyle},${outlineW},${shadow},${alignment},${marginH},${marginH},${marginV},1`;
 }
 
 async function generateSubtitles(audioPath, outputDir) {
