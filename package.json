@@ -6,11 +6,17 @@
   "scripts": {
     "dry-run": "node src/index.js --dry-run --genre=mystery",
     "mystery": "node src/index.js --run-daily --genre=mystery --count=5",
+    "mystery-long": "node src/index.js --run-once --genre=mystery-long",
+    "mystery-long-daily": "node src/index.js --run-daily --genre=mystery-long --count=1",
+    "longform-phase1": "node src/longformPhase1.js --genre=mystery-long",
+    "longform-phase2": "node src/longformPhase2.js",
     "run-once": "node src/index.js --run-once",
     "thumbnail-test": "node src/video/thumbnailGenerator.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
+    "@google-cloud/storage": "^7.19.0",
+    "@google/genai": "^1.50.1",
     "@napi-rs/canvas": "^0.1.53",
     "axios": "^1.7.0",
     "dotenv": "^16.4.0",

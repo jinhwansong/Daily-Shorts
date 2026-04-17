@@ -102,4 +102,70 @@ THUMBNAIL: <pexels search query>${metadataPromptAddon()}`,
   };
 }
 
-module.exports = { generateScript, generateMetadata };
+async function generateLongformScript(topic, genreKey = DEFAULT_GENRE) {
+  const systemPrompt = loadPrompt(genreKey);
+  const message = await client.messages.create({
+    model: MODEL,
+    max_tokens: 2000,
+    system: systemPrompt,
+    messages: [{ role: 'user', content: `Topic: ${topic}` }],
+  });
+  return message.content[0].text.trim();
+}
+
+async function generateLongformMetadata(script, topic, genreKey = DEFAULT_GENRE, chapters = []) {
+  const genre = getGenre(genreKey);
+  const message = await client.messages.create({
+    model: MODEL,
+    max_tokens: 500,
+    messages: [
+      {
+        role: 'user',
+        content: `Based on this YouTube longform mystery documentary script, generate metadata.
+
+Topic: ${topic}
+Script (first 600 chars): ${script.slice(0, 600)}
+
+Generate:
+1. YouTube TITLE — documentary/true-crime longform style (max 70 characters). Include the real case name/person early. Use "The [Case] | Documentary" or "[Name]: [What Happened]" style.
+2. A description (3–4 sentences, builds curiosity without spoiling, NO hashtags in body)
+3. 6 relevant tags (real case names, genre tags)
+4. A Pexels search query (2–4 words, dark atmospheric, for thumbnail background)
+
+TITLE rules:
+- Max 70 characters
+- Include the case name or person's name
+- Serious documentary tone (not clickbait)
+
+Output in this exact format:
+TITLE: <title>
+DESCRIPTION: <description>
+TAGS: <tag1>,<tag2>,...
+THUMBNAIL: <pexels query>`,
+      },
+    ],
+  });
+
+  const raw = message.content[0].text.trim();
+  const titleMatch = raw.match(/TITLE:\s*(.+)/);
+  const descMatch = raw.match(/DESCRIPTION:\s*([\s\S]+?)(?=TAGS:|$)/);
+  const tagsMatch = raw.match(/TAGS:\s*(.+)/);
+  const thumbnailMatch = raw.match(/THUMBNAIL:\s*(.+)/);
+
+  const channelTag = genre.channelName ? genre.channelName.toLowerCase() : '';
+  const baseTags = tagsMatch ? tagsMatch[1].split(',').map((t) => t.trim()) : ['mystery'];
+  const allTags = channelTag ? [channelTag, ...baseTags] : baseTags;
+
+  const baseDesc = descMatch ? descMatch[1].trim() : '';
+  const chapterBlock = chapters.length ? `\n\n${chapters.join('\n')}` : '';
+  const channelCredit = genre.channelName ? `\n\n— ${genre.channelName}` : '';
+
+  return {
+    title: titleMatch ? titleMatch[1].trim() : topic,
+    description: baseDesc + chapterBlock + channelCredit,
+    tags: [...new Set(allTags)],
+    thumbnailQuery: thumbnailMatch ? thumbnailMatch[1].trim() : null,
+  };
+}
+
+module.exports = { generateScript, generateMetadata, generateLongformScript, generateLongformMetadata };

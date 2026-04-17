@@ -14,8 +14,12 @@ const {
 const { fetchBackgroundVideo, fetchTwoBackgroundVideos } = require('./video/videoFetcher');
 const { generateSubtitles, srtToAss } = require('./video/subtitleGenerator');
 const { composeVideo } = require('./video/videoComposer');
+const { composeLongformVideo } = require('./video/longformVideoComposer');
 const { generateThumbnail } = require('./video/thumbnailGenerator');
 const { uploadVideo, setThumbnail } = require('./upload/youtubeUploader');
+const { generateLongformScript, generateLongformMetadata } = require('./script/scriptGenerator');
+const { generateImagesForScript, estimateChapterTimestamps } = require('./video/dalleImageGenerator');
+const { fetchLandscapeClips } = require('./video/longformVideoFetcher');
 const { runCopyrightGuard } = require('./utils/copyrightGuard');
 const { getAttributionFooter } = require('./utils/attributionFooter');
 const { pickRandomLocalBgm, listMp3InDir } = require('./utils/localBgm');
@@ -163,14 +167,106 @@ async function runPipeline(topic, genreKey) {
   return result;
 }
 
+async function runLongformPipeline(topic, genreKey) {
+  const genre = getGenre(genreKey);
+  const jobId = Date.now();
+  const outputDir = path.join(__dirname, `../output/${genreKey}_${jobId}`);
+  fs.mkdirSync(outputDir, { recursive: true });
+
+  console.log(`\n[${genre.label}] Topic: ${topic}`);
+
+  // 스크립트 생성
+  const script = await generateLongformScript(topic, genreKey);
+  fs.writeFileSync(path.join(outputDir, 'script.txt'), script);
+
+  // 챕터 타임스탬프 추정
+  const chapters = estimateChapterTimestamps(script);
+
+  // 메타데이터
+  const metadata = await generateLongformMetadata(script, topic, genreKey, chapters);
+  fs.writeFileSync(path.join(outputDir, 'metadata.json'), JSON.stringify(metadata, null, 2));
+  console.log(`  Title: ${metadata.title}`);
+
+  // TTS
+  const audioPath = await generateTTS(script.replace(/\[[A-Z_]+\]/g, ''), outputDir);
+
+  // Pexels 클립 + DALL-E 이미지 + 자막 병렬 처리
+  const [clipPaths, imagePaths, srtPath] = await Promise.all([
+    fetchLandscapeClips(outputDir, genreKey, 8),
+    generateImagesForScript(script, outputDir, 2),
+    generateSubtitles(audioPath, outputDir),
+  ]);
+
+  const assPath = srtToAss(srtPath, outputDir);
+
+  // BGM (Freesound or 로컬)
+  let bgmPath = null;
+  const freesound = await fetchFreesoundBgm(outputDir, genreKey);
+  if (freesound) {
+    bgmPath = freesound.path;
+    if (mustAppendFreesoundCredit(freesound.meta) && freesound.attributionLine) {
+      metadata.description = `${metadata.description}\n\n${freesound.attributionLine}`;
+    }
+  } else {
+    const local = pickRandomLocalBgm(genre);
+    if (local) bgmPath = local.path;
+  }
+
+  // Attribution footer
+  const attributionFooter = getAttributionFooter();
+  if (attributionFooter) {
+    metadata.description = `${metadata.description}\n\n${attributionFooter}`;
+  }
+  fs.writeFileSync(path.join(outputDir, 'metadata.json'), JSON.stringify(metadata, null, 2));
+
+  // 썸네일
+  const hookText =
+    metadata.title.length > 42 ? `${metadata.title.substring(0, 42).trim()}…` : metadata.title;
+
+  const [finalPath, thumbnailPath] = await Promise.all([
+    composeLongformVideo(clipPaths, imagePaths, audioPath, assPath, outputDir, { bgmPath }),
+    generateThumbnail(hookText, outputDir, genreKey, metadata.thumbnailQuery || null),
+  ]);
+
+  console.log(`  FFmpeg (longform): 16:9, ${clipPaths.length} clips + ${imagePaths.length} AI images`);
+
+  // 저작권 가드
+  runCopyrightGuard(outputDir, {
+    videoPath: clipPaths[0],
+    videoPath2: null,
+    audioPath,
+    thumbnailPath,
+    script,
+  });
+
+  // YouTube 비공개 업로드 (롱폼은 항상 private)
+  const savedPrivacy = process.env.YOUTUBE_PRIVACY_STATUS;
+  process.env.YOUTUBE_PRIVACY_STATUS = 'private';
+
+  const { videoId, videoUrl } = await uploadVideo(finalPath, metadata, genreKey);
+  await setThumbnail(videoId, thumbnailPath, genreKey);
+
+  if (savedPrivacy !== undefined) process.env.YOUTUBE_PRIVACY_STATUS = savedPrivacy;
+  else delete process.env.YOUTUBE_PRIVACY_STATUS;
+
+  const result = { jobId, genreKey, topic, metadata, videoId, videoUrl };
+  fs.writeFileSync(path.join(outputDir, 'result.json'), JSON.stringify(result, null, 2));
+  console.log(`  Uploaded (private): ${videoUrl}`);
+  console.log(`  → 스튜디오에서 직접 확인 후 공개 전환하세요.`);
+  return result;
+}
+
 async function runBatch(genreKey, count = UPLOAD_COUNT) {
   console.log(`\n=== ${getGenre(genreKey).label} | ${count} video(s) | hook: ${normalizeLevel()} ===`);
   const topics = await generateTopics(count, genreKey);
 
+  const isLongform = getGenre(genreKey).format === 'longform';
+  const pipelineFn = isLongform ? runLongformPipeline : runPipeline;
+
   const results = [];
   for (let i = 0; i < topics.length; i++) {
     try {
-      results.push(await runPipeline(topics[i], genreKey));
+      results.push(await pipelineFn(topics[i], genreKey));
     } catch (err) {
       console.error(`  Video ${i + 1} failed:`, err.message);
       results.push({ error: err.message, topic: topics[i] });

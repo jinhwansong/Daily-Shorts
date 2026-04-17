@@ -1,0 +1,53 @@
+# Longform Phase 1 — 스크립트 생성 + Gemini Batch 이미지 제출
+# 매일 KST 22:00 (UTC 13:00) 실행
+name: Longform Phase 1 - Batch Submit
+
+on:
+  schedule:
+    - cron: '0 13 * * *'   # UTC 13:00 = KST 22:00
+  workflow_dispatch:
+
+concurrency:
+  group: longform-phase1
+  cancel-in-progress: false
+
+jobs:
+  phase1:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      GOOGLE_AI_API_KEY: ${{ secrets.GOOGLE_AI_API_KEY }}
+      GOOGLE_CLOUD_SA_JSON: ${{ secrets.GOOGLE_CLOUD_SA_JSON }}
+      GCS_BUCKET: ${{ secrets.GCS_BUCKET || 'short-mystery-ai' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore used-topics cache
+        uses: actions/cache@v4
+        with:
+          path: output/used_topics_mystery-long.json
+          key: used-topics-mystery-long-${{ github.run_id }}
+          restore-keys: |
+            used-topics-mystery-long-
+
+      - name: Ensure output directory
+        run: mkdir -p output
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Run Phase 1 (submit batch)
+        run: node src/longformPhase1.js --genre=mystery-long
+
+      - name: Save used-topics cache
+        if: always() && hashFiles('output/used_topics_mystery-long.json') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: output/used_topics_mystery-long.json
+          key: used-topics-mystery-long-${{ github.run_id }}-${{ hashFiles('output/used_topics_mystery-long.json') }}
