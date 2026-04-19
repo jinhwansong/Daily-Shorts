@@ -1,6 +1,12 @@
 node_modules/
 .env
+# GCP 서비스 계정 키(.env / GOOGLE_CLOUD_SA_JSON_PATH용) — 저장소에 커밋 금지
+*-service-account*.json
+*-sa.json
+google-credentials.json
+secrets/
 output/*
 !output/.gitkeep
 
 mvp.md
+

@@ -13,10 +13,23 @@ function getAI() {
 }
 
 function getStorage() {
-  if (process.env.GOOGLE_CLOUD_SA_JSON) {
-    return new Storage({ credentials: JSON.parse(process.env.GOOGLE_CLOUD_SA_JSON) });
+  const keyPath = process.env.GOOGLE_CLOUD_SA_JSON_PATH;
+  if (keyPath && String(keyPath).trim()) {
+    return new Storage({ keyFilename: path.resolve(keyPath.trim()) });
   }
-  return new Storage(); // 로컬: Application Default Credentials
+  const raw = process.env.GOOGLE_CLOUD_SA_JSON;
+  if (raw && String(raw).trim()) {
+    try {
+      return new Storage({ credentials: JSON.parse(raw) });
+    } catch (e) {
+      throw new Error(
+        `GOOGLE_CLOUD_SA_JSON 파싱 실패 (${e.message}). ` +
+          '서비스 계정 JSON은 큰따옴표 표준 JSON이어야 합니다. ' +
+          '한 줄에 넣기 어렵다면 .env에 GOOGLE_CLOUD_SA_JSON_PATH=절대경로\\key.json 을 쓰세요.'
+      );
+    }
+  }
+  return new Storage(); // Application Default Credentials
 }
 
 // ── Batch API ──────────────────────────────────────────────────────────────
@@ -35,10 +48,7 @@ async function submitImageBatch(prompts, jobId) {
     contents: prompt,
     config: {
       responseModalities: ['TEXT', 'IMAGE'],
-      safetySettings: [
-        { category: 'HARM_CATEGORY_VIOLENCE', threshold: 'BLOCK_ONLY_HIGH' },
-        { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' },
-      ],
+      safetySettings: [{ category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' }],
       imageConfig: {
         aspectRatio: '16:9',
         imageSize: '1K',

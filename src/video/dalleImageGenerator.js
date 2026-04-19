@@ -87,10 +87,7 @@ async function generateImagesForScript(script, outputDir, imagesPerSection = 2) 
           config: {
             responseModalities: ['TEXT', 'IMAGE'],
             // 미스터리 콘텐츠(어두운 분위기)를 위해 안전 필터 완화 (폭력/혐오 묘사 없음)
-            safetySettings: [
-              { category: 'HARM_CATEGORY_VIOLENCE', threshold: 'BLOCK_ONLY_HIGH' },
-              { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' },
-            ],
+            safetySettings: [{ category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' }],
             imageConfig: {
               aspectRatio: '16:9',
               imageSize: '1K', // 2K 대비 비용 절반, Ken Burns 영상 위 화질 차이 미미
