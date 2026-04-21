@@ -16,7 +16,6 @@ const EDGE_VOICE = process.env.TTS_EDGE_VOICE || 'en-US-GuyNeural';
 const EDGE_RATE = process.env.TTS_EDGE_RATE || '-8%';
 const EDGE_VOLUME = process.env.TTS_EDGE_VOLUME || '+0%';
 
-const TTS_MAX_CHARS = 4096;
 const TTS_SAFE_CHUNK = 4000;
 
 /**
@@ -83,18 +82,37 @@ function splitTextForTts(text) {
   return chunks;
 }
 
-function concatMp3Files(partPaths, outputPath) {
+async function concatMp3Files(partPaths, outputPath) {
   if (partPaths.length === 0) throw new Error('concatMp3Files: no parts');
   if (partPaths.length === 1) {
     fs.copyFileSync(partPaths[0], outputPath);
     try { fs.unlinkSync(partPaths[0]); } catch (_) {}
     return;
   }
-  const bufs = partPaths.map((p) => fs.readFileSync(p));
-  fs.writeFileSync(outputPath, Buffer.concat(bufs));
-  for (const p of partPaths) {
-    try { fs.unlinkSync(p); } catch (_) {}
-  }
+  // 스트림 순차 파이프: 파트를 메모리에 한꺼번에 올리지 않음
+  await new Promise((resolve, reject) => {
+    const out = fs.createWriteStream(outputPath);
+    out.on('finish', resolve);
+    out.on('error', reject);
+
+    let idx = 0;
+    function pipeNext() {
+      if (idx >= partPaths.length) { out.end(); return; }
+      const src = fs.createReadStream(partPaths[idx]);
+      src.on('error', (e) => {
+        console.warn(`concatMp3Files: 파트 ${idx} 읽기 실패 (무시) ${e.message}`);
+        idx++;
+        pipeNext();
+      });
+      src.on('end', () => {
+        try { fs.unlinkSync(partPaths[idx - 1]); } catch (_) {}
+        idx++;
+        pipeNext();
+      });
+      src.pipe(out, { end: false });
+    }
+    pipeNext();
+  });
 }
 
 // ── OpenAI TTS (폴백) ─────────────────────────────────────────────
@@ -130,7 +148,7 @@ async function generateTTS(script, outputDir) {
       // 병렬 생성 후 순서대로 concat
       const partPaths = chunks.map((_, i) => path.join(outputDir, `_tts_part_${i}.mp3`));
       await Promise.all(chunks.map((chunk, i) => Promise.resolve(edgeTtsChunk(chunk, partPaths[i]))));
-      concatMp3Files(partPaths, outputPath);
+      await concatMp3Files(partPaths, outputPath);
     }
     return outputPath;
   }
@@ -145,9 +163,9 @@ async function generateTTS(script, outputDir) {
     // 청크 병렬 요청 (OpenAI TTS rate-limit은 넉넉함)
     const partPaths = chunks.map((_, i) => path.join(outputDir, `_tts_part_${i}.mp3`));
     await Promise.all(chunks.map((chunk, i) => openaiTtsChunk(client, chunk, partPaths[i])));
-    concatMp3Files(partPaths, outputPath);
+    await concatMp3Files(partPaths, outputPath);
   }
   return outputPath;
 }
 
-module.exports = { generateTTS, splitTextForTts, TTS_MAX_CHARS };
+module.exports = { generateTTS, splitTextForTts };

@@ -28,6 +28,10 @@ const MIN_SEG_SEC = 5; // 세그먼트 최소 길이(초) — 너무 짧으면 c
  * 고정 duration 사용 (CLIP_SEG / IMG_SEG).
  */
 function buildSegmentListLegacy(clipPaths, imagePaths) {
+  if (!clipPaths.length && !imagePaths.length) return [];
+  if (!clipPaths.length) {
+    return imagePaths.map((_, idx) => ({ type: 'img', idx, duration: IMG_SEG }));
+  }
   const segments = [];
   const cycles = Math.max(clipPaths.length, Math.ceil(imagePaths.length / 2));
   for (let c = 0; c < cycles; c++) {
@@ -291,8 +295,8 @@ async function composeLongformVideo(clipPaths, imagePaths, audioPath, assPath, o
     preset,
     '-crf',
     crf,
-    '-threads',
-    threads,
+    '-pix_fmt',
+    'yuv420p',
     '-c:a',
     'aac',
     '-b:a',

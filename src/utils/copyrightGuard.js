@@ -23,12 +23,14 @@ function runCopyrightGuard(outputDir, { videoPath, videoPath2, audioPath, thumbn
     videoPath2 &&
     fs.existsSync(videoPath2) &&
     path.basename(videoPath2) === 'background_b.mp4';
-  const bgOkSingle = bgExists && bn === 'background.mp4';
-  const bgOkDual = bgExists && bn === 'background_a.mp4' && b2Ok;
+  const bgOkSingle   = bgExists && bn === 'background.mp4';
+  const bgOkDual     = bgExists && bn === 'background_a.mp4' && b2Ok;
+  const bgOkLongform = bgExists && /^bg_landscape_\d+\.mp4$/.test(bn); // 롱폼 클립
+  const bgOk = bgOkSingle || bgOkDual || bgOkLongform;
   check(
     'Pexels CC0 배경 영상',
-    bgOkSingle || bgOkDual,
-    bgExists ? (bgOkSingle || bgOkDual ? '' : `파일명: ${bn}`) : '파일 없음'
+    bgOk,
+    bgExists ? (bgOk ? '' : `파일명: ${bn}`) : '파일 없음'
   );
 
   // 2. 음성: OpenAI TTS 결과물인지 (파일명 확인)

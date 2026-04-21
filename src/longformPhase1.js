@@ -30,15 +30,26 @@ const { submitImageBatch, saveState } = require('./utils/gcsBatchManager');
 const IMAGES_PER_SECTION = Math.max(1, Math.min(3, parseInt(process.env.LONGFORM_IMAGES_PER_SECTION || '1', 10)));
 
 async function buildAllImagePrompts(script) {
-  const sections = parseScriptSections(script);
-  const prompts = [];
+  const sections = parseScriptSections(script).filter((s) => s.text);
+
+  // Claude 프롬프트 빌드: 동시 3개 (섹션 × IMAGES_PER_SECTION 태스크)
+  const tasks = [];
   for (const section of sections) {
-    if (!section.text) continue;
     for (let i = 0; i < IMAGES_PER_SECTION; i++) {
-      const prompt = await buildImagePrompt(section.name, section.text);
-      prompts.push(prompt);
-      console.log(`  [Prompt] ${section.name} #${i + 1} 생성`);
+      tasks.push({ section, i });
     }
+  }
+
+  const prompts = new Array(tasks.length).fill(null);
+  const CONCURRENCY = 3;
+  for (let start = 0; start < tasks.length; start += CONCURRENCY) {
+    await Promise.all(
+      tasks.slice(start, start + CONCURRENCY).map(async ({ section, i }, offset) => {
+        const idx = start + offset;
+        prompts[idx] = await buildImagePrompt(section.name, section.text);
+        console.log(`  [Prompt] ${section.name} #${i + 1} 생성`);
+      })
+    );
   }
   return prompts;
 }

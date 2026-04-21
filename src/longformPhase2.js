@@ -2,14 +2,16 @@
  * Longform Phase 2 — 이미지 다운로드 + FFmpeg 합성 + YouTube 업로드
  *
  * 흐름:
- *   1. GCS에서 Phase 1 state 읽기
+ *   1. GCS state 읽기
  *   2. 배치 완료 대기 (폴링, 최대 30분)
- *   3. GCS에서 이미지 다운로드
- *   4. TTS + 자막 생성 (스크립트에서 섹션 헤더 제거 후)
- *   5. Pexels landscape 클립 다운로드
- *   6. FFmpeg 합성 (16:9)
- *   7. YouTube 비공개 업로드
- *   8. GCS 정리
+ *   3. 병렬: 이미지 다운로드 / TTS / Pexels 클립 / Freesound BGM
+ *            └─ TTS 완료 즉시 Whisper 자막 시작 (Pexels 기다리지 않음)
+ *   4. 이미지 실패 재시도 (direct API) → Pexels 스틸 폴백
+ *   5. FFmpeg 합성 + 썸네일 (병렬)
+ *   6. YouTube 비공개 업로드
+ *   7. GCS 정리
+ *
+ * 예상 실행 시간: ~5-8분 (10분 영상 기준, GitHub Actions 2코어)
  *
  * 실행: node src/longformPhase2.js
  */
@@ -53,7 +55,12 @@ function stripSectionHeaders(script) {
     .trim();
 }
 
+function elapsed(start) {
+  return `${((Date.now() - start) / 1000).toFixed(1)}s`;
+}
+
 async function runPhase2() {
+  const t0 = Date.now();
   console.log('\n=== Longform Phase 2 ===');
 
   // 1. State 읽기
@@ -64,7 +71,7 @@ async function runPhase2() {
   }
 
   const { batchJobName, gcsDestination, imageCount, imagesPerSection: ipsSaved, video } = state;
-  const { jobId, topic, genreKey, script, metadata, chapters } = video;
+  const { jobId, topic, genreKey, script, metadata } = video;
   const genre = getGenre(genreKey);
 
   console.log(`  Topic: ${topic}`);
@@ -83,25 +90,41 @@ async function runPhase2() {
   fs.writeFileSync(path.join(outputDir, 'script.txt'), script);
   fs.writeFileSync(path.join(outputDir, 'metadata.json'), JSON.stringify(metadata, null, 2));
 
-  // 3. 이미지 다운로드 + TTS + Pexels 클립 + BGM — 모두 병렬 시작
-  console.log('  이미지·TTS·Pexels·BGM 병렬 처리 중...');
-  const ttsScript = stripSectionHeaders(script);
-  const clipCount = 8;
+  // 섹션 파싱 (한 번만)
+  const sections = parseScriptSections(script).filter((s) => s.text && s.text.trim());
 
-  const [{ imageSlots, failedIndices }, audioPath, clipPaths, freesound] = await Promise.all([
+  // 클립 수: 섹션 수 + 2 여유분 (최대 8), Pexels 불필요 다운로드 방지
+  const clipCount = Math.min(8, Math.max(sections.length + 2, 4));
+
+  // 3. 병렬: 이미지 다운로드 / TTS / Pexels / BGM
+  //    + TTS 완료 즉시 Whisper 자막 시작 (Pexels 완료를 기다리지 않음)
+  console.log(`  이미지·TTS·Pexels(${clipCount}개)·BGM 병렬 처리 중...`);
+  const ttsScript = stripSectionHeaders(script);
+
+  const tStepStart = Date.now();
+  const ttsPromise = generateTTS(ttsScript, outputDir);
+  const subtitlesPromise = ttsPromise.then(async (ap) => {
+    console.log(`  [TTS 완료 ${elapsed(tStepStart)}] Whisper 자막 시작...`);
+    const srt = await generateSubtitles(ap, outputDir);
+    return srtToAss(srt, outputDir);
+  });
+
+  const [{ imageSlots, failedIndices }, audioPath, clipPaths, freesound, assPath] = await Promise.all([
     downloadBatchImages(gcsDestination, outputDir, imageCount, batchJobName),
-    generateTTS(ttsScript, outputDir),
+    ttsPromise,
     fetchLandscapeClips(outputDir, genreKey, clipCount),
     fetchFreesoundBgm(outputDir, genreKey),
+    subtitlesPromise,
   ]);
+  console.log(`  [병렬 완료 ${elapsed(tStepStart)}] 이미지:${imageSlots.length} 클립:${clipPaths.length}`);
 
   // 1차 재시도: 배치 실패 프롬프트를 direct API로 복구
   if (failedIndices.length > 0 && state.imagePrompts?.length) {
+    console.log(`  이미지 재시도 ${failedIndices.length}개...`);
     await retryFailedImages(failedIndices, state.imagePrompts, imageSlots, outputDir);
   }
 
   // 2차 폴백: 여전히 null인 슬롯을 Pexels 스틸로 채움
-  const sections = parseScriptSections(script).filter((s) => s.text && s.text.trim());
   const stillFailed = imageSlots.map((v, i) => (v == null ? i : -1)).filter((i) => i >= 0);
   if (stillFailed.length > 0) {
     console.warn(`  ⚠ ${stillFailed.length}개 재시도 후에도 실패 → Pexels 스틸 폴백`);
@@ -116,11 +139,7 @@ async function runPhase2() {
   // 최종 이미지 배열: 위치 순, null 제거
   const imagePaths = imageSlots.filter(Boolean);
 
-  // 자막 (TTS 완료 후 순차 처리)
-  const srtPathFinal = await generateSubtitles(audioPath, outputDir);
-  const assPath = srtToAss(srtPathFinal, outputDir);
-
-  // 5. BGM 메타 처리
+  // BGM 메타 처리
   let bgmPath = null;
   if (freesound) {
     bgmPath = freesound.path;
@@ -151,24 +170,24 @@ async function runPhase2() {
 
   fs.writeFileSync(path.join(outputDir, 'metadata.json'), JSON.stringify(metadata, null, 2));
 
-  // Phase1 이전 state: imagesPerSection 없으면 이미지 수÷섹션 수로 추정
+  // imagesPerSection 결정 (구 state 호환: sections 재사용)
   let imagesPerSection = ipsSaved != null && Number.isFinite(Number(ipsSaved))
     ? Math.max(1, Math.min(3, Number(ipsSaved)))
     : null;
   if (imagesPerSection == null) {
-    const secs = parseScriptSections(script).filter((s) => s.text && s.text.trim());
     imagesPerSection =
-      secs.length > 0 && imageCount > 0
-        ? Math.max(1, Math.min(3, Math.round(imageCount / secs.length)))
+      sections.length > 0 && imageCount > 0
+        ? Math.max(1, Math.min(3, Math.round(imageCount / sections.length)))
         : 1;
   }
 
-  // 6. 썸네일 훅 (우하단 짧은 문구 — pickLongformThumbnailHook)
+  // 썸네일 훅 (우하단 짧은 문구)
   const hookText = pickLongformThumbnailHook(metadata, script);
 
-  // 7. FFmpeg 합성 + 썸네일 병렬 (스크립트 섹션 순 = 클립→해당 섹션 이미지)
+  // FFmpeg 합성 + 썸네일 병렬
+  const tFFmpeg = Date.now();
   console.log(
-    `  FFmpeg 합성 중… (편집: 스크립트 섹션 순 · 섹션당 이미지 ${imagesPerSection}장, Pexels 클립 ${clipPaths.length}개)`
+    `  FFmpeg 합성 중… (섹션:${sections.length} · 이미지:${imagePaths.length} · 클립:${clipPaths.length} · imagesPerSection:${imagesPerSection})`
   );
   const [finalPath, thumbnailPath] = await Promise.all([
     composeLongformVideo(clipPaths, imagePaths, audioPath, assPath, outputDir, {
@@ -181,9 +200,9 @@ async function runPhase2() {
     }),
   ]);
 
-  console.log(`  FFmpeg 완료: ${finalPath}`);
+  console.log(`  FFmpeg 완료 [${elapsed(tFFmpeg)}]: ${finalPath}`);
 
-  // 8. 저작권 가드
+  // 저작권 가드
   runCopyrightGuard(outputDir, {
     videoPath: clipPaths[0],
     videoPath2: null,
@@ -192,7 +211,8 @@ async function runPhase2() {
     script,
   });
 
-  // 9. YouTube 비공개 업로드 (롱폼은 항상 private)
+  // YouTube 비공개 업로드
+  const tUpload = Date.now();
   const savedPrivacy = process.env.YOUTUBE_PRIVACY_STATUS;
   process.env.YOUTUBE_PRIVACY_STATUS = 'private';
 
@@ -202,16 +222,14 @@ async function runPhase2() {
   if (savedPrivacy !== undefined) process.env.YOUTUBE_PRIVACY_STATUS = savedPrivacy;
   else delete process.env.YOUTUBE_PRIVACY_STATUS;
 
-  const result = { jobId, genreKey, topic, metadata, videoId, videoUrl };
-  fs.writeFileSync(path.join(outputDir, 'result.json'), JSON.stringify(result, null, 2));
-  console.log(`  Uploaded (private): ${videoUrl}`);
+  console.log(`  업로드 완료 [${elapsed(tUpload)}]: ${videoUrl}`);
   console.log(`  → 스튜디오에서 확인 후 공개 전환하세요.`);
 
   // 10. GCS 정리
   await cleanupGCSResults(gcsDestination);
   await deleteState();
 
-  console.log('\n✅ Phase 2 완료');
+  console.log(`\n✅ Phase 2 완료 [총 ${elapsed(t0)}]`);
   return result;
 }
 

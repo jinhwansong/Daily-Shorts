@@ -49,7 +49,13 @@ async function submitImageBatch(prompts, jobId) {
     contents: prompt,
     config: {
       responseModalities: ['TEXT', 'IMAGE'],
-      safetySettings: [{ category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' }],
+      // 안전 필터: 모든 카테고리를 HIGH_AND_ABOVE 차단으로 통일 — 텍스트만 반환하는 회색지대 줄임
+      safetySettings: [
+        { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' },
+        { category: 'HARM_CATEGORY_HARASSMENT',        threshold: 'BLOCK_ONLY_HIGH' },
+        { category: 'HARM_CATEGORY_HATE_SPEECH',       threshold: 'BLOCK_ONLY_HIGH' },
+        { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_ONLY_HIGH' },
+      ],
       imageConfig: {
         aspectRatio: '16:9',
         imageSize: '1K',
@@ -297,7 +303,12 @@ async function retryFailedImages(failedIndices, imagePrompts, imageSlots, output
           contents: prompt,
           config: {
             responseModalities: ['TEXT', 'IMAGE'],
-            safetySettings: [{ category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' }],
+            safetySettings: [
+              { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' },
+              { category: 'HARM_CATEGORY_HARASSMENT',        threshold: 'BLOCK_ONLY_HIGH' },
+              { category: 'HARM_CATEGORY_HATE_SPEECH',       threshold: 'BLOCK_ONLY_HIGH' },
+              { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_ONLY_HIGH' },
+            ],
             imageConfig: { aspectRatio: '16:9', imageSize: '1K' },
           },
         });
@@ -360,7 +371,12 @@ async function loadState() {
   const [exists] = await file.exists();
   if (!exists) return null;
   const [content] = await file.download();
-  return JSON.parse(content.toString());
+  try {
+    return JSON.parse(content.toString());
+  } catch (e) {
+    console.error(`[GCS] State JSON 파싱 실패: ${e.message}`);
+    return null;
+  }
 }
 
 /** Phase 2 완료 후 state 삭제 */

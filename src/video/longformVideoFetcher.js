@@ -37,6 +37,7 @@ async function fetchOneLandscapeClip(query, outputDir, filename) {
   let response = await axios.get(PEXELS_API, {
     headers,
     params: { ...baseParams, size: 'large' },
+    timeout: 15000,
   });
   let videos = response.data.videos;
 
@@ -44,6 +45,7 @@ async function fetchOneLandscapeClip(query, outputDir, filename) {
     response = await axios.get(PEXELS_API, {
       headers,
       params: { ...baseParams, size: 'medium' },
+      timeout: 15000,
     });
     videos = response.data.videos;
   }
@@ -59,11 +61,13 @@ async function fetchOneLandscapeClip(query, outputDir, filename) {
 
   const videoPath = path.join(outputDir, filename);
   const writer = fs.createWriteStream(videoPath);
-  const dlResponse = await axios.get(videoFile.link, { responseType: 'stream' });
-  dlResponse.data.pipe(writer);
+  const dlResponse = await axios.get(videoFile.link, { responseType: 'stream', timeout: 90000 });
+
   await new Promise((resolve, reject) => {
-    writer.on('finish', resolve);
+    dlResponse.data.on('error', reject);
     writer.on('error', reject);
+    writer.on('finish', resolve);
+    dlResponse.data.pipe(writer);
   });
   return videoPath;
 }
