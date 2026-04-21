@@ -1,35 +1,29 @@
 /**
- * TTS 생성 — edge-tts (무료, Microsoft Neural) 우선 사용.
- * edge-tts Python 패키지가 없거나 TTS_PROVIDER=openai 이면 OpenAI TTS-1 로 폴백.
- *
- * edge-tts 품질: Microsoft Azure Neural TTS와 동일. 완전 무료.
- * 설치: pip install edge-tts
- * 목소리: https://learn.microsoft.com/en-us/azure/ai-services/speech-service/language-support
+ * TTS 생성 — OpenAI TTS-1 (onyx) 기본 사용.
+ * TTS_PROVIDER=edge 로 설정하면 edge-tts(무료)로 전환 가능.
  */
 const { spawnSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-// ── edge-tts 설정 ──────────────────────────────────────────────────
-const EDGE_VOICE = process.env.TTS_EDGE_VOICE || 'en-US-GuyNeural';
-// OpenAI speed:0.92 ≈ edge-tts rate -8%
-const EDGE_RATE = process.env.TTS_EDGE_RATE || '-8%';
-const EDGE_VOLUME = process.env.TTS_EDGE_VOLUME || '+0%';
-
-// ── OpenAI TTS 설정 (폴백) ─────────────────────────────────────────
+// ── OpenAI TTS 설정 ────────────────────────────────────────────────
 const TTS_VOICE = process.env.TTS_OPENAI_VOICE || 'onyx';
 const TTS_MODEL = 'tts-1';
+
+// ── edge-tts 설정 (TTS_PROVIDER=edge 시) ──────────────────────────
+const EDGE_VOICE = process.env.TTS_EDGE_VOICE || 'en-US-GuyNeural';
+const EDGE_RATE = process.env.TTS_EDGE_RATE || '-8%';
+const EDGE_VOLUME = process.env.TTS_EDGE_VOLUME || '+0%';
 
 const TTS_MAX_CHARS = 4096;
 const TTS_SAFE_CHUNK = 4000;
 
 /**
- * edge-tts 바이너리가 실행 가능한지 확인
- * @returns {boolean}
+ * edge-tts 사용 여부: TTS_PROVIDER=edge 이고 바이너리 존재할 때만
  */
 function isEdgeTtsAvailable() {
-  if (process.env.TTS_PROVIDER === 'openai') return false;
+  if (process.env.TTS_PROVIDER !== 'edge') return false;
   const r = spawnSync('edge-tts', ['--version'], { encoding: 'utf-8' });
   return r.status === 0;
 }
