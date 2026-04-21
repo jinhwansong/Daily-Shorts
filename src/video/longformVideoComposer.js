@@ -108,32 +108,31 @@ async function composeLongformVideo(clipPaths, imagePaths, audioPath, assPath, o
   }
 
   // ── filter_complex 구축 ──────────────────────────────────────────
+  // 핵심: 동일 이미지가 세그먼트에서 여러 번 재사용될 수 있음.
+  // named 출력 패드는 concat 입력으로 한 번만 쓸 수 있으므로,
+  // 이미지/클립 인덱스별이 아닌 **세그먼트 순번별** 출력 패드를 생성한다.
   const filterParts = [];
-
-  // 각 Pexels 클립: trim + scale/crop + eq + fps/pix_fmt 통일 → [vc_i]
   const norm = normalizeForConcat();
-  for (let i = 0; i < N; i++) {
-    filterParts.push(
-      `[${i}:v]trim=0:${CLIP_SEG},setpts=PTS-STARTPTS,` +
-        `scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},` +
-        `${colorFilter},${norm}[vc${i}]`
-    );
+
+  for (let k = 0; k < totalSegs; k++) {
+    const seg = segments[k];
+    if (seg.type === 'clip') {
+      filterParts.push(
+        `[${seg.idx}:v]trim=0:${CLIP_SEG},setpts=PTS-STARTPTS,` +
+          `scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},` +
+          `${colorFilter},${norm}[sv${k}]`
+      );
+    } else {
+      filterParts.push(
+        `[${N + seg.idx}:v]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},` +
+          `zoompan=z='min(zoom+${inc},${maxZ})':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${W}x${H}:fps=${OUT_FPS},` +
+          `trim=0:${IMG_SEG},setpts=PTS-STARTPTS,${norm}[sv${k}]`
+      );
+    }
   }
 
-  // 각 이미지: Ken Burns + trim + fps/pix_fmt 통일 → [img_j] (im0 등은 libav에서 스트림 지정자로 오인되는 빌드가 있어 img_ 접두 사용)
-  const zd = Math.max(1, Math.round(OUT_FPS / 4));
-  for (let j = 0; j < M; j++) {
-    filterParts.push(
-      `[${N + j}:v]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},` +
-        `zoompan=z='min(zoom+${inc},${maxZ})':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${zd}:s=${W}x${H}:fps=${OUT_FPS},` +
-        `trim=0:${IMG_SEG},setpts=PTS-STARTPTS,${norm}[img_${j}]`
-    );
-  }
-
-  // 세그먼트 순서대로 concat 입력 레이블 조합
-  const segLabels = segments
-    .map((s) => (s.type === 'clip' ? `[vc${s.idx}]` : `[img_${s.idx}]`))
-    .join('');
+  // 각 세그먼트 패드가 모두 고유 → concat 입력 중복 없음
+  const segLabels = Array.from({ length: totalSegs }, (_, k) => `[sv${k}]`).join('');
   filterParts.push(`${segLabels}concat=n=${totalSegs}:v=1:a=0[vcat]`);
 
   // 자막 오버레이
