@@ -187,13 +187,15 @@ async function runLongformPipeline(topic, genreKey) {
   fs.writeFileSync(path.join(outputDir, 'metadata.json'), JSON.stringify(metadata, null, 2));
   console.log(`  Title: ${metadata.title}`);
 
+  const longformIps = Math.max(1, Math.min(3, parseInt(process.env.LONGFORM_IMAGES_PER_SECTION || '1', 10)));
+
   // TTS
   const audioPath = await generateTTS(script.replace(/\[[A-Z_]+\]/g, ''), outputDir);
 
   // Pexels 클립 + DALL-E 이미지 + 자막 병렬 처리
   const [clipPaths, imagePaths, srtPath] = await Promise.all([
     fetchLandscapeClips(outputDir, genreKey, 8),
-    generateImagesForScript(script, outputDir, 2),
+    generateImagesForScript(script, outputDir, longformIps),
     generateSubtitles(audioPath, outputDir),
   ]);
 
@@ -222,7 +224,11 @@ async function runLongformPipeline(topic, genreKey) {
   const hookText = pickLongformThumbnailHook(metadata, script);
 
   const [finalPath, thumbnailPath] = await Promise.all([
-    composeLongformVideo(clipPaths, imagePaths, audioPath, assPath, outputDir, { bgmPath }),
+    composeLongformVideo(clipPaths, imagePaths, audioPath, assPath, outputDir, {
+      bgmPath,
+      script,
+      imagesPerSection: longformIps,
+    }),
     generateThumbnail(hookText, outputDir, genreKey, metadata.thumbnailQuery || null, {
       layout: 'corner',
     }),

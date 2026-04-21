@@ -34,8 +34,10 @@ jobs:
       - name: Ensure output directory
         run: mkdir -p output
 
-      - name: Install FFmpeg
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Install FFmpeg + edge-tts (무료 TTS)
+        run: |
+          sudo apt-get update && sudo apt-get install -y ffmpeg
+          pip install edge-tts --quiet
 
       - uses: actions/setup-node@v4
         with:

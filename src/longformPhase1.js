@@ -26,7 +26,8 @@ const {
 const { buildImagePrompt } = require('./video/dalleImageGenerator');
 const { submitImageBatch, saveState } = require('./utils/gcsBatchManager');
 
-const IMAGES_PER_SECTION = 2;
+// 섹션당 이미지 수 — 6섹션 × 1 = 6장 기본. 비용↑ 원하면 LONGFORM_IMAGES_PER_SECTION=2
+const IMAGES_PER_SECTION = Math.max(1, Math.min(3, parseInt(process.env.LONGFORM_IMAGES_PER_SECTION || '1', 10)));
 
 async function buildAllImagePrompts(script) {
   const sections = parseScriptSections(script);
@@ -79,6 +80,7 @@ async function runPhase1(genreKey = 'mystery-long') {
     batchJobName,
     gcsDestination,
     imageCount: imagePrompts.length,
+    imagesPerSection: IMAGES_PER_SECTION,
     imagePrompts,
     submittedAt: new Date().toISOString(),
     video: {

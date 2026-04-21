@@ -48,3 +48,4 @@ STRICT RULES:
 - NEVER include hashtags, labels, or formatting beyond the section headers above
 - Do not mock or sensationalize real victims or their families
 - Output the script ONLY — section headers plus narration text, nothing else
+- If uncertain about ANY specific detail (exact date, exact number, precise name), OMIT or describe broadly — a vague true statement is better than a specific wrong one

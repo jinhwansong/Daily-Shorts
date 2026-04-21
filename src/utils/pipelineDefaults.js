@@ -6,8 +6,8 @@
 const VIDEO = {
   EQ_BRIGHTNESS: -0.06,
   EQ_SATURATION: 0.88,
-  CRF: 21,
-  PRESET: 'medium',
+  CRF: 23,
+  PRESET: 'fast',
   BGM_VOLUME: 0.14,
   /** 서로 다른 Pexels 세로 클립 2개를 전·후반 반씩 이어 붙임 (API·다운로드 2배). 끄려면 false 또는 env VIDEO_DUAL_BACKGROUND=0 */
   DUAL_BACKGROUND: true,

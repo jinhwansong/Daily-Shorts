@@ -58,7 +58,7 @@ STRICT RULES ON FACTS (repeat: every line must pass this bar):
 - NEVER invent or exaggerate details not in the historical record
 - NEVER add fictional elements, composite scenes, or invented dialogue to real cases
 - NEVER present speculation, online theory, or unverified claims as established fact
-- If uncertain about a detail, omit it entirely
+- If uncertain about ANY specific detail (year, exact number, precise location, name spelling), OMIT it entirely — do not approximate or guess. A vaguer true sentence beats a specific wrong one.
 - Stick to what is publicly documented
 
 VICTIMS, REPUTATION, AND FACTS (non-negotiable):

@@ -26,6 +26,7 @@ const {
 } = require('./audio/freesoundBgm');
 const { generateSubtitles, srtToAss } = require('./video/subtitleGenerator');
 const { composeLongformVideo } = require('./video/longformVideoComposer');
+const { parseScriptSections } = require('./video/dalleImageGenerator');
 const { generateThumbnail, pickLongformThumbnailHook } = require('./video/thumbnailGenerator');
 const { fetchLandscapeClips } = require('./video/longformVideoFetcher');
 const { uploadVideo, setThumbnail } = require('./upload/youtubeUploader');
@@ -36,6 +37,7 @@ const { getGenre } = require('./genres');
 const {
   waitForBatch,
   downloadBatchImages,
+  retryFailedImages,
   cleanupGCSResults,
   loadState,
   deleteState,
@@ -61,7 +63,7 @@ async function runPhase2() {
     process.exit(0);
   }
 
-  const { batchJobName, gcsDestination, imageCount, video } = state;
+  const { batchJobName, gcsDestination, imageCount, imagesPerSection: ipsSaved, video } = state;
   const { jobId, topic, genreKey, script, metadata, chapters } = video;
   const genre = getGenre(genreKey);
 
@@ -81,27 +83,45 @@ async function runPhase2() {
   fs.writeFileSync(path.join(outputDir, 'script.txt'), script);
   fs.writeFileSync(path.join(outputDir, 'metadata.json'), JSON.stringify(metadata, null, 2));
 
-  // 3. GCS에서 이미지 다운로드
-  console.log('  이미지 다운로드 중...');
-  const imagePaths = await downloadBatchImages(gcsDestination, outputDir, imageCount, batchJobName);
-
-  // 4. TTS + Pexels + 자막 병렬 처리
-  console.log('  TTS + Pexels 클립 + 자막 처리 중...');
+  // 3. 이미지 다운로드 + TTS + Pexels 클립 + BGM — 모두 병렬 시작
+  console.log('  이미지·TTS·Pexels·BGM 병렬 처리 중...');
   const ttsScript = stripSectionHeaders(script);
+  const clipCount = 8;
 
-  const [audioPath, clipPaths, srtPath] = await Promise.all([
+  const [{ imageSlots, failedIndices }, audioPath, clipPaths, freesound] = await Promise.all([
+    downloadBatchImages(gcsDestination, outputDir, imageCount, batchJobName),
     generateTTS(ttsScript, outputDir),
-    fetchLandscapeClips(outputDir, genreKey, 8),
-    // 자막은 TTS 완료 후에 생성해야 해서 순차 처리
-    (async () => null)(),
+    fetchLandscapeClips(outputDir, genreKey, clipCount),
+    fetchFreesoundBgm(outputDir, genreKey),
   ]);
 
+  // 1차 재시도: 배치 실패 프롬프트를 direct API로 복구
+  if (failedIndices.length > 0 && state.imagePrompts?.length) {
+    await retryFailedImages(failedIndices, state.imagePrompts, imageSlots, outputDir);
+  }
+
+  // 2차 폴백: 여전히 null인 슬롯을 Pexels 스틸로 채움
+  const sections = parseScriptSections(script).filter((s) => s.text && s.text.trim());
+  const stillFailed = imageSlots.map((v, i) => (v == null ? i : -1)).filter((i) => i >= 0);
+  if (stillFailed.length > 0) {
+    console.warn(`  ⚠ ${stillFailed.length}개 재시도 후에도 실패 → Pexels 스틸 폴백`);
+    const { fetchPexelsStillForFallback } = require('./video/longformVideoFetcher');
+    for (const idx of stillFailed) {
+      const query = sections[idx % sections.length]?.name?.toLowerCase().replace(/_/g, ' ') || 'dark mystery';
+      const stillPath = await fetchPexelsStillForFallback(outputDir, query, idx);
+      if (stillPath) imageSlots[idx] = stillPath;
+    }
+  }
+
+  // 최종 이미지 배열: 위치 순, null 제거
+  const imagePaths = imageSlots.filter(Boolean);
+
+  // 자막 (TTS 완료 후 순차 처리)
   const srtPathFinal = await generateSubtitles(audioPath, outputDir);
   const assPath = srtToAss(srtPathFinal, outputDir);
 
-  // 5. BGM (Freesound → 로컬 폴백)
+  // 5. BGM 메타 처리
   let bgmPath = null;
-  const freesound = await fetchFreesoundBgm(outputDir, genreKey);
   if (freesound) {
     bgmPath = freesound.path;
     if (mustAppendFreesoundCredit(freesound.meta) && freesound.attributionLine) {
@@ -131,13 +151,31 @@ async function runPhase2() {
 
   fs.writeFileSync(path.join(outputDir, 'metadata.json'), JSON.stringify(metadata, null, 2));
 
+  // Phase1 이전 state: imagesPerSection 없으면 이미지 수÷섹션 수로 추정
+  let imagesPerSection = ipsSaved != null && Number.isFinite(Number(ipsSaved))
+    ? Math.max(1, Math.min(3, Number(ipsSaved)))
+    : null;
+  if (imagesPerSection == null) {
+    const secs = parseScriptSections(script).filter((s) => s.text && s.text.trim());
+    imagesPerSection =
+      secs.length > 0 && imageCount > 0
+        ? Math.max(1, Math.min(3, Math.round(imageCount / secs.length)))
+        : 1;
+  }
+
   // 6. 썸네일 훅 (우하단 짧은 문구 — pickLongformThumbnailHook)
   const hookText = pickLongformThumbnailHook(metadata, script);
 
-  // 7. FFmpeg 합성 + 썸네일 병렬
-  console.log('  FFmpeg 합성 중...');
+  // 7. FFmpeg 합성 + 썸네일 병렬 (스크립트 섹션 순 = 클립→해당 섹션 이미지)
+  console.log(
+    `  FFmpeg 합성 중… (편집: 스크립트 섹션 순 · 섹션당 이미지 ${imagesPerSection}장, Pexels 클립 ${clipPaths.length}개)`
+  );
   const [finalPath, thumbnailPath] = await Promise.all([
-    composeLongformVideo(clipPaths, imagePaths, audioPath, assPath, outputDir, { bgmPath }),
+    composeLongformVideo(clipPaths, imagePaths, audioPath, assPath, outputDir, {
+      bgmPath,
+      script,
+      imagesPerSection,
+    }),
     generateThumbnail(hookText, outputDir, genreKey, metadata.thumbnailQuery || null, {
       layout: 'corner',
     }),

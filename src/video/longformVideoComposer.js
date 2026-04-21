@@ -11,6 +11,7 @@ const {
 } = require('../utils/videoPipelineEnv');
 const { videoEqBrightness, videoEqSaturation, bgmVolume, videoCrf, videoPreset } =
   require('../utils/pipelineDefaults');
+const { parseScriptSections } = require('./dalleImageGenerator');
 
 const W = 1920;
 const H = 1080;
@@ -20,23 +21,98 @@ const OUT_FPS = 30;
 const CLIP_SEG = 40;
 const IMG_SEG = 30;
 
-// 패턴: [clip, img, img] 반복
-function buildSegmentList(clipPaths, imagePaths) {
+const MIN_SEG_SEC = 5; // 세그먼트 최소 길이(초) — 너무 짧으면 concat 불안정
+
+/**
+ * 레거시 교차 패턴 (스크립트 미전달 시): [clip, img_a, img_b] × cycles
+ * 고정 duration 사용 (CLIP_SEG / IMG_SEG).
+ */
+function buildSegmentListLegacy(clipPaths, imagePaths) {
   const segments = [];
   const cycles = Math.max(clipPaths.length, Math.ceil(imagePaths.length / 2));
-
   for (let c = 0; c < cycles; c++) {
     const clipIdx = c % clipPaths.length;
-    segments.push({ type: 'clip', idx: clipIdx });
-
+    segments.push({ type: 'clip', idx: clipIdx, duration: CLIP_SEG });
     const i0 = (c * 2) % imagePaths.length;
     const i1 = (c * 2 + 1) % imagePaths.length;
-    segments.push({ type: 'img', idx: i0 });
+    segments.push({ type: 'img', idx: i0, duration: IMG_SEG });
     if (imagePaths.length > 1) {
-      segments.push({ type: 'img', idx: i1 });
+      segments.push({ type: 'img', idx: i1, duration: IMG_SEG });
     }
   }
   return segments;
+}
+
+/**
+ * 섹션별 단어 수 비율 → 해당 섹션이 차지해야 할 영상 시간 계산
+ * @returns {{ section, duration }[]}
+ */
+function calcSectionDurations(script, audioDuration) {
+  const TD = audioDuration + 1.5;
+  const sections = parseScriptSections(script).filter((s) => s.text && s.text.trim());
+  if (!sections.length) return [];
+  const wordCounts = sections.map((s) => s.text.split(/\s+/).filter(Boolean).length);
+  const total = wordCounts.reduce((a, b) => a + b, 0) || 1;
+  return sections.map((s, i) => ({
+    section: s,
+    duration: (wordCounts[i] / total) * TD,
+  }));
+}
+
+/**
+ * 스크립트 섹션 순서 + 비율 기반 duration 배분.
+ *
+ * 각 섹션:
+ *   - 1 Pexels 클립 + ips 장의 AI 이미지
+ *   - 세그먼트 하나당 duration = sectionDur / (1 + ips)  (균등 분배)
+ *   - 최소 MIN_SEG_SEC 보장
+ *
+ * 이미지가 남으면 끝에 추가 (클립 1 + 이미지 1 pair, 각 10/15초).
+ *
+ * @param {string} script
+ * @param {string[]} clipPaths
+ * @param {string[]} imagePaths
+ * @param {number} imagesPerSection
+ * @param {number} audioDuration  — TTS 오디오 길이(초)
+ */
+function buildSegmentListFromScript(script, clipPaths, imagePaths, imagesPerSection, audioDuration) {
+  const ips = Math.max(1, Math.min(3, Number(imagesPerSection) || 1));
+  if (!script || !clipPaths.length || !imagePaths.length) {
+    return buildSegmentListLegacy(clipPaths, imagePaths);
+  }
+  const sectionDurs = calcSectionDurations(script, audioDuration);
+  if (!sectionDurs.length) return buildSegmentListLegacy(clipPaths, imagePaths);
+
+  const segments = [];
+  let imgCursor = 0;
+
+  for (let si = 0; si < sectionDurs.length; si++) {
+    const secDur = sectionDurs[si].duration;
+    const available = imagePaths.length - imgCursor;
+    const ipsActual = Math.min(ips, available);
+    const segCount = 1 + ipsActual; // clip + images
+    // 각 세그먼트가 균등하게 섹션 시간 소화, 최소 보장
+    const perSeg = Math.max(MIN_SEG_SEC, secDur / segCount);
+    const clipDur = Math.round(perSeg * 10) / 10;
+    const imgDur = Math.round(perSeg * 10) / 10;
+
+    segments.push({ type: 'clip', idx: si % clipPaths.length, duration: clipDur });
+    for (let k = 0; k < ipsActual; k++) {
+      segments.push({ type: 'img', idx: imgCursor, duration: imgDur });
+      imgCursor++;
+    }
+  }
+
+  // 남은 이미지 소비
+  let extra = 0;
+  while (imgCursor < imagePaths.length) {
+    segments.push({ type: 'clip', idx: (sectionDurs.length + extra) % clipPaths.length, duration: 10 });
+    segments.push({ type: 'img', idx: imgCursor, duration: 15 });
+    imgCursor++;
+    extra++;
+  }
+
+  return segments.length ? segments : buildSegmentListLegacy(clipPaths, imagePaths);
 }
 
 function escapeSubtitlesPath(filePath) {
@@ -63,11 +139,12 @@ function normalizeForConcat() {
  * @param {string} audioPath — TTS MP3
  * @param {string} assPath — 자막 ASS
  * @param {string} outputDir
- * @param {{ bgmPath?: string|null }} [options]
+ * @param {{ bgmPath?: string|null, script?: string, imagesPerSection?: number }} [options]
+ *   script + imagesPerSection — 섹션 순서대로 클립→이미지 배치 (없으면 레거시 교차 패턴)
  * @returns {string} 출력 MP4 경로
  */
 async function composeLongformVideo(clipPaths, imagePaths, audioPath, assPath, outputDir, options = {}) {
-  const { bgmPath: bgmPathOpt } = options;
+  const { bgmPath: bgmPathOpt, script, imagesPerSection } = options;
   const bgmPath = bgmPathOpt && fs.existsSync(path.resolve(bgmPathOpt)) ? path.resolve(bgmPathOpt) : null;
 
   const audioDuration = await getAudioDuration(audioPath);
@@ -77,7 +154,13 @@ async function composeLongformVideo(clipPaths, imagePaths, audioPath, assPath, o
   fs.copyFileSync(assPath, tmpAss);
   const subEscaped = escapeSubtitlesPath(tmpAss);
 
-  const segments = buildSegmentList(clipPaths, imagePaths);
+  const useScriptOrder =
+    String(script || '').trim().length > 0 &&
+    imagesPerSection != null &&
+    Number(imagesPerSection) > 0;
+  const segments = useScriptOrder
+    ? buildSegmentListFromScript(script, clipPaths, imagePaths, imagesPerSection, audioDuration)
+    : buildSegmentListLegacy(clipPaths, imagePaths);
   const totalSegs = segments.length;
 
   const colorFilter = buildColorFilter();
@@ -116,17 +199,20 @@ async function composeLongformVideo(clipPaths, imagePaths, audioPath, assPath, o
 
   for (let k = 0; k < totalSegs; k++) {
     const seg = segments[k];
+    const dur = Math.max(MIN_SEG_SEC, seg.duration ?? (seg.type === 'clip' ? CLIP_SEG : IMG_SEG));
     if (seg.type === 'clip') {
       filterParts.push(
-        `[${seg.idx}:v]trim=0:${CLIP_SEG},setpts=PTS-STARTPTS,` +
+        `[${seg.idx}:v]trim=0:${dur},setpts=PTS-STARTPTS,` +
           `scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},` +
           `${colorFilter},${norm}[sv${k}]`
       );
     } else {
+      // zoompan d: 이미지 duration × fps 프레임 동안 줌 적용
+      const zpFrames = Math.round(dur * OUT_FPS);
       filterParts.push(
         `[${N + seg.idx}:v]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},` +
-          `zoompan=z='min(zoom+${inc},${maxZ})':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${W}x${H}:fps=${OUT_FPS},` +
-          `trim=0:${IMG_SEG},setpts=PTS-STARTPTS,${norm}[sv${k}]`
+          `zoompan=z='min(zoom+${inc},${maxZ})':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${zpFrames}:s=${W}x${H}:fps=${OUT_FPS},` +
+          `trim=0:${dur},setpts=PTS-STARTPTS,${norm}[sv${k}]`
       );
     }
   }
@@ -180,11 +266,15 @@ async function composeLongformVideo(clipPaths, imagePaths, audioPath, assPath, o
   const outputPath = path.resolve(path.join(outputDir, 'final.mp4'));
   const crf = String(videoCrf());
   const preset = videoPreset();
+  // GitHub Actions: ubuntu-latest는 CPU 2코어 — 스레드 수 자동(0)으로 두면 FFmpeg가 최적 결정
+  const threads = String(parseInt(process.env.FFMPEG_THREADS || '0', 10));
 
   const args = [
     '-hide_banner',
     '-loglevel',
     'error',
+    '-threads',
+    threads,
     '-y',
     ...inputArgs,
     '-filter_complex_script',
@@ -201,6 +291,8 @@ async function composeLongformVideo(clipPaths, imagePaths, audioPath, assPath, o
     preset,
     '-crf',
     crf,
+    '-threads',
+    threads,
     '-c:a',
     'aac',
     '-b:a',

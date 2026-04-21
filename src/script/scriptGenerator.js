@@ -4,7 +4,10 @@ const { getGenre, DEFAULT_GENRE } = require('../genres');
 const { scriptUserMessageAddon, metadataPromptAddon } = require('../utils/contentIntensity');
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+// 숏폼 스크립트·메타: 빠른 Haiku 사용
 const MODEL = process.env.CLAUDE_MODEL || 'claude-haiku-4-5-20251001';
+// 롱폼 스크립트: 2-step grounding으로 Haiku도 사실성 개선. Sonnet 원하면 CLAUDE_LONGFORM_MODEL=claude-sonnet-4-5-20251001
+const LONGFORM_SCRIPT_MODEL = process.env.CLAUDE_LONGFORM_MODEL || process.env.CLAUDE_MODEL || 'claude-haiku-4-5-20251001';
 
 function loadPrompt(genreKey) {
   const genre = getGenre(genreKey);
@@ -102,15 +105,56 @@ THUMBNAIL: <pexels search query>${metadataPromptAddon()}`,
   };
 }
 
+/**
+ * 롱폼 스크립트 생성 — 2단계:
+ *   1) 사실 추출: topic에서 검증 가능한 구체적 사실 목록 확보
+ *   2) 스크립트: 그 사실 목록만 사용해 작성 (추가 지어내기 금지)
+ */
 async function generateLongformScript(topic, genreKey = DEFAULT_GENRE) {
   const systemPrompt = loadPrompt(genreKey);
-  const message = await client.messages.create({
-    model: MODEL,
-    max_tokens: 2000,
-    system: systemPrompt,
-    messages: [{ role: 'user', content: `Topic: ${topic}` }],
+
+  // --- 1단계: 사실 추출 ---
+  const factsMsg = await client.messages.create({
+    model: LONGFORM_SCRIPT_MODEL,
+    max_tokens: 600,
+    messages: [
+      {
+        role: 'user',
+        content: `You are a documentary researcher. List ONLY verified, publicly documented facts about this topic.
+
+Topic: ${topic}
+
+Rules:
+- 10–16 bullet points, each a single concrete fact (name, date, place, event, official finding, or documented contradiction)
+- ONLY include facts you are confident are in the public record. If uncertain about a specific date or detail, omit it entirely — do NOT guess.
+- No speculation, no theory, no invented detail
+- Use exact years, names, and figures only when you are certain
+- Format: one bullet per line starting with "• "`,
+      },
+    ],
   });
-  return message.content[0].text.trim();
+
+  const facts = factsMsg.content[0].text.trim();
+
+  // --- 2단계: 스크립트 작성 (추출된 사실만 허용) ---
+  const scriptMsg = await client.messages.create({
+    model: LONGFORM_SCRIPT_MODEL,
+    max_tokens: 2200,
+    system: systemPrompt,
+    messages: [
+      {
+        role: 'user',
+        content: `Topic: ${topic}
+
+VERIFIED FACTS (use ONLY these — do not add any detail not in this list):
+${facts}
+
+Write the script now. Every specific claim (date, name, location, number, official finding) must be traceable to one of the bullet points above. If the facts list does not contain a specific detail, describe that aspect in general terms or omit it.`,
+      },
+    ],
+  });
+
+  return scriptMsg.content[0].text.trim();
 }
 
 async function generateLongformMetadata(script, topic, genreKey = DEFAULT_GENRE, chapters = []) {
