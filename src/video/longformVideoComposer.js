@@ -113,18 +113,19 @@ async function composeLongformVideo(clipPaths, imagePaths, audioPath, assPath, o
     );
   }
 
-  // 각 DALL-E 이미지: scale/crop + Ken Burns + trim → [ic_j]
+  // 각 DALL-E 이미지: scale/crop + Ken Burns + trim → [limg_j]
+  // 주의: [ic0] 같은 라벨은 FFmpeg가 stream specifier로 오해석할 수 있음 (Invalid stream specifier: ic0)
   for (let j = 0; j < M; j++) {
     filterParts.push(
       `[${N + j}:v]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},` +
         `zoompan=z='min(zoom+${inc},${maxZ})':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${W}x${H}:fps=30,` +
-        `trim=0:${IMG_SEG},setpts=PTS-STARTPTS[ic${j}]`
+        `trim=0:${IMG_SEG},setpts=PTS-STARTPTS[limg${j}]`
     );
   }
 
   // 세그먼트 순서대로 concat 입력 레이블 조합
   const segLabels = segments
-    .map((s) => (s.type === 'clip' ? `[vc${s.idx}]` : `[ic${s.idx}]`))
+    .map((s) => (s.type === 'clip' ? `[vc${s.idx}]` : `[limg${s.idx}]`))
     .join('');
   filterParts.push(`${segLabels}concat=n=${totalSegs}:v=1:a=0[vcat]`);
 
@@ -172,6 +173,8 @@ async function composeLongformVideo(clipPaths, imagePaths, audioPath, assPath, o
 
   const args = [
     '-hide_banner',
+    '-loglevel',
+    'error',
     '-y',
     ...inputArgs,
     '-filter_complex', filterComplex,
@@ -195,7 +198,10 @@ async function composeLongformVideo(clipPaths, imagePaths, audioPath, assPath, o
   try { fs.unlinkSync(tmpAss); } catch (_) { /* ignore */ }
 
   if (r.status !== 0) {
-    const msg = [r.stderr, r.stdout].filter(Boolean).join('\n') || `exit ${r.status}`;
+    const raw = [r.stderr, r.stdout].filter(Boolean).join('\n') || '';
+    const errObj = r.error && String(r.error.message || r.error);
+    const tail = raw.length > 16000 ? raw.slice(-16000) : raw;
+    const msg = tail || errObj || `exit ${r.status}`;
     throw new Error(`ffmpeg (longform) failed: ${msg}`);
   }
 
