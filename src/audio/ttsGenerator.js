@@ -92,7 +92,11 @@ async function concatMp3Files(partPaths, outputPath) {
   // 스트림 순차 파이프: 파트를 메모리에 한꺼번에 올리지 않음
   await new Promise((resolve, reject) => {
     const out = fs.createWriteStream(outputPath);
-    out.on('finish', resolve);
+    out.on('finish', () => {
+      // 모든 파트 삭제 (성공/실패 무관)
+      for (const p of partPaths) { try { fs.unlinkSync(p); } catch (_) {} }
+      resolve();
+    });
     out.on('error', reject);
 
     let idx = 0;
@@ -104,11 +108,7 @@ async function concatMp3Files(partPaths, outputPath) {
         idx++;
         pipeNext();
       });
-      src.on('end', () => {
-        try { fs.unlinkSync(partPaths[idx - 1]); } catch (_) {}
-        idx++;
-        pipeNext();
-      });
+      src.on('end', () => { idx++; pipeNext(); });
       src.pipe(out, { end: false });
     }
     pipeNext();
