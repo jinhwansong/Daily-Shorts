@@ -113,19 +113,18 @@ async function composeLongformVideo(clipPaths, imagePaths, audioPath, assPath, o
     );
   }
 
-  // 각 DALL-E 이미지: scale/crop + Ken Burns + trim → [z_j]
-  // FFmpeg concat 앞 패드 이름은 [문자+숫자]만 쓰면 stream specifier로 오인됨 — 반드시 밑줄 포함 (예: z_0)
+  // 각 DALL-E 이미지: scale/crop + Ken Burns + trim → [lfimg_j] (longform img)
   for (let j = 0; j < M; j++) {
     filterParts.push(
       `[${N + j}:v]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},` +
         `zoompan=z='min(zoom+${inc},${maxZ})':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${W}x${H}:fps=30,` +
-        `trim=0:${IMG_SEG},setpts=PTS-STARTPTS[z_${j}]`
+        `trim=0:${IMG_SEG},setpts=PTS-STARTPTS[lfimg${j}]`
     );
   }
 
   // 세그먼트 순서대로 concat 입력 레이블 조합
   const segLabels = segments
-    .map((s) => (s.type === 'clip' ? `[vc${s.idx}]` : `[z_${s.idx}]`))
+    .map((s) => (s.type === 'clip' ? `[vc${s.idx}]` : `[lfimg${s.idx}]`))
     .join('');
   filterParts.push(`${segLabels}concat=n=${totalSegs}:v=1:a=0[vcat]`);
 
@@ -167,6 +166,10 @@ async function composeLongformVideo(clipPaths, imagePaths, audioPath, assPath, o
 
   const filterComplex = filterParts.join(';');
 
+  // 긴 그래프는 argv 한도로 잘려 Invalid stream specifier(미정의 패드)가 날 수 있음 → 파일로 전달
+  const fcScriptPath = path.join(os.tmpdir(), `longform-fc-${Date.now()}.txt`);
+  fs.writeFileSync(fcScriptPath, filterComplex, 'utf8');
+
   const outputPath = path.resolve(path.join(outputDir, 'final.mp4'));
   const crf = String(videoCrf());
   const preset = videoPreset();
@@ -177,16 +180,26 @@ async function composeLongformVideo(clipPaths, imagePaths, audioPath, assPath, o
     'error',
     '-y',
     ...inputArgs,
-    '-filter_complex', filterComplex,
-    '-map', '[burned]',
-    '-map', '[aout]',
-    '-t', TD,
-    '-c:v', 'libx264',
-    '-preset', preset,
-    '-crf', crf,
-    '-c:a', 'aac',
-    '-b:a', '192k',
-    '-movflags', '+faststart',
+    '-filter_complex_script',
+    fcScriptPath,
+    '-map',
+    '[burned]',
+    '-map',
+    '[aout]',
+    '-t',
+    TD,
+    '-c:v',
+    'libx264',
+    '-preset',
+    preset,
+    '-crf',
+    crf,
+    '-c:a',
+    'aac',
+    '-b:a',
+    '192k',
+    '-movflags',
+    '+faststart',
     outputPath,
   ];
 
@@ -195,7 +208,16 @@ async function composeLongformVideo(clipPaths, imagePaths, audioPath, assPath, o
     maxBuffer: 64 * 1024 * 1024,
   });
 
-  try { fs.unlinkSync(tmpAss); } catch (_) { /* ignore */ }
+  try {
+    fs.unlinkSync(tmpAss);
+  } catch (_) {
+    /* ignore */
+  }
+  try {
+    fs.unlinkSync(fcScriptPath);
+  } catch (_) {
+    /* ignore */
+  }
 
   if (r.status !== 0) {
     const raw = [r.stderr, r.stdout].filter(Boolean).join('\n') || '';
