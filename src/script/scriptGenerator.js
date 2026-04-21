@@ -9,20 +9,61 @@ const MODEL = process.env.CLAUDE_MODEL || 'claude-haiku-4-5-20251001';
 // 롱폼 스크립트: 2-step grounding으로 Haiku도 사실성 개선. Sonnet 원하면 CLAUDE_LONGFORM_MODEL=claude-sonnet-4-5-20251001
 const LONGFORM_SCRIPT_MODEL = process.env.CLAUDE_LONGFORM_MODEL || process.env.CLAUDE_MODEL || 'claude-haiku-4-5-20251001';
 
+/** 쇼츠 TTS 길이 상한(단어). mystery 등 숏폼만 적용 — env SHORTS_MAX_WORDS 로 조정 가능 */
+const SHORTS_MAX_WORDS = Math.max(
+  55,
+  Math.min(120, parseInt(process.env.SHORTS_MAX_WORDS || '95', 10))
+);
+
 function loadPrompt(genreKey) {
   const genre = getGenre(genreKey);
   return fs.readFileSync(genre.promptFile, 'utf-8');
 }
 
+/**
+ * 모델이 길이 지시를 어겼을 때 TTS·영상 길이 폭주 방지 — 단어 수 상한 + 가능하면 문장 끝에서 자름
+ */
+function clampShortsScript(text, maxWords = SHORTS_MAX_WORDS) {
+  const s = String(text || '').trim();
+  if (!s) return s;
+  const words = s.split(/\s+/);
+  if (words.length <= maxWords) return s;
+
+  const head = words.slice(0, maxWords).join(' ');
+  const lastPeriod = Math.max(
+    head.lastIndexOf('. '),
+    head.lastIndexOf('? '),
+    head.lastIndexOf('! ')
+  );
+  if (lastPeriod >= Math.floor(head.length * 0.35)) {
+    return head.slice(0, lastPeriod + 1).trim();
+  }
+  return head;
+}
+
 async function generateScript(topic, genreKey = DEFAULT_GENRE) {
+  const genre = getGenre(genreKey);
+  if (genre.format === 'longform') {
+    throw new Error('generateScript() is for Shorts only; use generateLongformScript() for longform.');
+  }
   const systemPrompt = loadPrompt(genreKey);
   const message = await client.messages.create({
     model: MODEL,
-    max_tokens: 400,
+    // 숏폼은 90단어 전후면 충분 — 400이면 150~250단어까지 나와 1분+ TTS 가능
+    max_tokens: 260,
     system: systemPrompt,
     messages: [{ role: 'user', content: `Topic: ${topic}${scriptUserMessageAddon()}` }],
   });
-  return message.content[0].text.trim();
+  const raw = message.content[0].text.trim();
+  const wcBefore = raw.split(/\s+/).filter(Boolean).length;
+  const clamped = clampShortsScript(raw, SHORTS_MAX_WORDS);
+  const wcAfter = clamped.split(/\s+/).filter(Boolean).length;
+  if (wcAfter < wcBefore) {
+    console.warn(
+      `  [Shorts] 스크립트 길이 제한: ${wcBefore} → ${wcAfter} words (max ${SHORTS_MAX_WORDS})`
+    );
+  }
+  return clamped;
 }
 
 async function generateMetadata(script, topic, genreKey = DEFAULT_GENRE) {

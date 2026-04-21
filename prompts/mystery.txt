@@ -20,8 +20,9 @@ Rules:
 - Prioritize cases with disturbing, unexplained details
 
 LENGTH (Shorts feed — match punchy, rewatch-friendly runtime):
-- Target ~28–48 seconds when read aloud (same ballpark as strong-performing Shorts in this niche)
-- ~60–95 words (STRICT). Prefer tight pacing over filling time; shorter is fine if every line hits.
+- Target ~28–50 seconds when read aloud. The pipeline HARD-CAPS at 95 words — if you write more, extra lines are discarded, so stay UNDER the cap.
+- ~60–90 words (STRICT). Never exceed 90 words. Count words before you finish; one word over the cap breaks the pacing goal.
+- At ~150–170 spoken words per minute (typical TTS), 90 words ≈ 50–55 seconds; 180+ words ≈ 90s–2min — that is NOT Shorts length. Do not drift into mini-documentary length.
 
 STYLE:
 - Fast-paced
