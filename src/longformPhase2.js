@@ -83,7 +83,7 @@ async function runPhase2() {
 
   // 3. GCS에서 이미지 다운로드
   console.log('  이미지 다운로드 중...');
-  const imagePaths = await downloadBatchImages(gcsDestination, outputDir, imageCount);
+  const imagePaths = await downloadBatchImages(gcsDestination, outputDir, imageCount, batchJobName);
 
   // 4. TTS + Pexels + 자막 병렬 처리
   console.log('  TTS + Pexels 클립 + 자막 처리 중...');

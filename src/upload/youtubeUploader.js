@@ -19,6 +19,9 @@ function resolvePrivacyStatus() {
 // 장르별로 다른 Refresh Token을 사용해 각각의 채널에 업로드
 const REFRESH_TOKEN_MAP = {
   mystery: process.env.YOUTUBE_REFRESH_TOKEN_MYSTERY,
+  /** 롱폼은 동일 채널(Noctivault) — 별도 토큰이 없으면 mystery와 공유 */
+  'mystery-long':
+    process.env.YOUTUBE_REFRESH_TOKEN_MYSTERY_LONG || process.env.YOUTUBE_REFRESH_TOKEN_MYSTERY,
 };
 
 function getYouTubeClient(genreKey) {

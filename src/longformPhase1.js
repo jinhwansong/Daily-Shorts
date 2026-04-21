@@ -94,10 +94,14 @@ async function runPhase1(genreKey = 'mystery-long') {
 
   await saveState(state);
 
-  console.log(`\n✅ Phase 1 완료`);
+  console.log(`\n✅ Phase 1 완료 (스크립트·배치 제출·state 저장까지)`);
   console.log(`   배치 Job: ${batchJobName}`);
-  console.log(`   이미지 ${imagePrompts.length}장 생성 중 (GCS: ${gcsDestination})`);
-  console.log(`   Phase 2는 배치 완료 후 (보통 1~6시간) 실행하세요.`);
+  console.log(
+    `   이미지 ${imagePrompts.length}장은 Gemini Batch가 비동기 생성 → 완료 후에만 ${gcsDestination} 에 JSONL이 생깁니다.`
+  );
+  console.log(`   지금 당장은 batch-results 폴더가 비어 있어도 정상일 수 있습니다.`);
+  console.log(`   Phase 2는 배치가 SUCCEEDED 된 뒤 실행하세요 (보통 1~6시간).`);
+  console.log(`   Phase 1을 다시 돌리면 새 job으로 state가 덮어써져 이 배치와 경로가 바뀝니다.`);
 
   return state;
 }
