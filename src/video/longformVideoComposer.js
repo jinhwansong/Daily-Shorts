@@ -14,6 +14,7 @@ const { videoEqBrightness, videoEqSaturation, bgmVolume, videoCrf, videoPreset }
 
 const W = 1920;
 const H = 1080;
+const OUT_FPS = 30;
 
 // 세그먼트 고정 길이 (초)
 const CLIP_SEG = 40;
@@ -47,6 +48,11 @@ function buildColorFilter() {
   const brightness = videoEqBrightness();
   const saturation = videoEqSaturation();
   return `eq=brightness=${brightness}:saturation=${saturation}`;
+}
+
+/** concat 전에 클립/이미지 스트림을 동일 fps·SAR·pix_fmt로 맞춤 (불일치 시 concat 실패·이상한 에러 유발) */
+function normalizeForConcat() {
+  return `fps=${OUT_FPS},setsar=1,format=yuv420p`;
 }
 
 /**
@@ -104,27 +110,29 @@ async function composeLongformVideo(clipPaths, imagePaths, audioPath, assPath, o
   // ── filter_complex 구축 ──────────────────────────────────────────
   const filterParts = [];
 
-  // 각 Pexels 클립: trim + scale/crop + eq → [vc_i]
+  // 각 Pexels 클립: trim + scale/crop + eq + fps/pix_fmt 통일 → [vc_i]
+  const norm = normalizeForConcat();
   for (let i = 0; i < N; i++) {
     filterParts.push(
       `[${i}:v]trim=0:${CLIP_SEG},setpts=PTS-STARTPTS,` +
         `scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},` +
-        `${colorFilter}[vc${i}]`
+        `${colorFilter},${norm}[vc${i}]`
     );
   }
 
-  // 각 DALL-E 이미지: scale/crop + Ken Burns + trim → [lfimg_j] (longform img)
+  // 각 이미지: Ken Burns + trim + fps/pix_fmt 통일 → [im_j] (lf 접두사는 일부 빌드에서 파싱 혼동 보고 있어 짧은 라벨 사용)
+  const zd = Math.max(1, Math.round(OUT_FPS / 4));
   for (let j = 0; j < M; j++) {
     filterParts.push(
       `[${N + j}:v]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},` +
-        `zoompan=z='min(zoom+${inc},${maxZ})':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${W}x${H}:fps=30,` +
-        `trim=0:${IMG_SEG},setpts=PTS-STARTPTS[lfimg${j}]`
+        `zoompan=z='min(zoom+${inc},${maxZ})':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${zd}:s=${W}x${H}:fps=${OUT_FPS},` +
+        `trim=0:${IMG_SEG},setpts=PTS-STARTPTS,${norm}[im${j}]`
     );
   }
 
   // 세그먼트 순서대로 concat 입력 레이블 조합
   const segLabels = segments
-    .map((s) => (s.type === 'clip' ? `[vc${s.idx}]` : `[lfimg${s.idx}]`))
+    .map((s) => (s.type === 'clip' ? `[vc${s.idx}]` : `[im${s.idx}]`))
     .join('');
   filterParts.push(`${segLabels}concat=n=${totalSegs}:v=1:a=0[vcat]`);
 

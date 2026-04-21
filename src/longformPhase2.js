@@ -26,7 +26,7 @@ const {
 } = require('./audio/freesoundBgm');
 const { generateSubtitles, srtToAss } = require('./video/subtitleGenerator');
 const { composeLongformVideo } = require('./video/longformVideoComposer');
-const { generateThumbnail } = require('./video/thumbnailGenerator');
+const { generateThumbnail, pickLongformThumbnailHook } = require('./video/thumbnailGenerator');
 const { fetchLandscapeClips } = require('./video/longformVideoFetcher');
 const { uploadVideo, setThumbnail } = require('./upload/youtubeUploader');
 const { runCopyrightGuard } = require('./utils/copyrightGuard');
@@ -131,15 +131,16 @@ async function runPhase2() {
 
   fs.writeFileSync(path.join(outputDir, 'metadata.json'), JSON.stringify(metadata, null, 2));
 
-  // 6. 썸네일 텍스트
-  const hookText =
-    metadata.title.length > 42 ? `${metadata.title.substring(0, 42).trim()}…` : metadata.title;
+  // 6. 썸네일 훅 (우하단 짧은 문구 — pickLongformThumbnailHook)
+  const hookText = pickLongformThumbnailHook(metadata, script);
 
   // 7. FFmpeg 합성 + 썸네일 병렬
   console.log('  FFmpeg 합성 중...');
   const [finalPath, thumbnailPath] = await Promise.all([
     composeLongformVideo(clipPaths, imagePaths, audioPath, assPath, outputDir, { bgmPath }),
-    generateThumbnail(hookText, outputDir, genreKey, metadata.thumbnailQuery || null),
+    generateThumbnail(hookText, outputDir, genreKey, metadata.thumbnailQuery || null, {
+      layout: 'corner',
+    }),
   ]);
 
   console.log(`  FFmpeg 완료: ${finalPath}`);

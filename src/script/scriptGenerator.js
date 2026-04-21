@@ -131,6 +131,12 @@ Generate:
 2. A description (3–4 sentences, builds curiosity without spoiling, NO hashtags in body)
 3. 6 relevant tags (real case names, genre tags)
 4. A Pexels search query (2–4 words, dark atmospheric, for thumbnail background)
+5. THUMBNAIL_HOOK — ONE short on-image line for the thumbnail (NOT the full title). Pull wording or vibe from the script: a provocative curiosity fragment (max 52 characters). Documentary tone; no false claims; can be punchier than TITLE but still serious.
+
+THUMBNAIL_HOOK rules:
+- Max 52 characters, single line, no quotes
+- Different from TITLE — tease / tension, not the episode headline
+- Prefer a striking phrase that appears in or is clearly implied by the script
 
 TITLE rules:
 - Max 70 characters
@@ -141,7 +147,8 @@ Output in this exact format:
 TITLE: <title>
 DESCRIPTION: <description>
 TAGS: <tag1>,<tag2>,...
-THUMBNAIL: <pexels query>`,
+THUMBNAIL: <pexels query>
+THUMBNAIL_HOOK: <short hook line>`,
       },
     ],
   });
@@ -151,6 +158,7 @@ THUMBNAIL: <pexels query>`,
   const descMatch = raw.match(/DESCRIPTION:\s*([\s\S]+?)(?=TAGS:|$)/);
   const tagsMatch = raw.match(/TAGS:\s*(.+)/);
   const thumbnailMatch = raw.match(/THUMBNAIL:\s*(.+)/);
+  const hookMatch = raw.match(/THUMBNAIL_HOOK:\s*(.+)/);
 
   const channelTag = genre.channelName ? genre.channelName.toLowerCase() : '';
   const baseTags = tagsMatch ? tagsMatch[1].split(',').map((t) => t.trim()) : ['mystery'];
@@ -165,6 +173,7 @@ THUMBNAIL: <pexels query>`,
     description: baseDesc + chapterBlock + channelCredit,
     tags: [...new Set(allTags)],
     thumbnailQuery: thumbnailMatch ? thumbnailMatch[1].trim() : null,
+    thumbnailHook: hookMatch ? hookMatch[1].trim().slice(0, 52) : null,
   };
 }
 

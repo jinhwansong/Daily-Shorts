@@ -15,7 +15,7 @@ const { fetchBackgroundVideo, fetchTwoBackgroundVideos } = require('./video/vide
 const { generateSubtitles, srtToAss } = require('./video/subtitleGenerator');
 const { composeVideo } = require('./video/videoComposer');
 const { composeLongformVideo } = require('./video/longformVideoComposer');
-const { generateThumbnail } = require('./video/thumbnailGenerator');
+const { generateThumbnail, pickLongformThumbnailHook } = require('./video/thumbnailGenerator');
 const { uploadVideo, setThumbnail } = require('./upload/youtubeUploader');
 const { generateLongformScript, generateLongformMetadata } = require('./script/scriptGenerator');
 const { generateImagesForScript, estimateChapterTimestamps } = require('./video/dalleImageGenerator');
@@ -219,13 +219,13 @@ async function runLongformPipeline(topic, genreKey) {
   }
   fs.writeFileSync(path.join(outputDir, 'metadata.json'), JSON.stringify(metadata, null, 2));
 
-  // 썸네일
-  const hookText =
-    metadata.title.length > 42 ? `${metadata.title.substring(0, 42).trim()}…` : metadata.title;
+  const hookText = pickLongformThumbnailHook(metadata, script);
 
   const [finalPath, thumbnailPath] = await Promise.all([
     composeLongformVideo(clipPaths, imagePaths, audioPath, assPath, outputDir, { bgmPath }),
-    generateThumbnail(hookText, outputDir, genreKey, metadata.thumbnailQuery || null),
+    generateThumbnail(hookText, outputDir, genreKey, metadata.thumbnailQuery || null, {
+      layout: 'corner',
+    }),
   ]);
 
   console.log(`  FFmpeg (longform): 16:9, ${clipPaths.length} clips + ${imagePaths.length} AI images`);

@@ -71,18 +71,17 @@ async function fetchPexelsImage(query, outputDir) {
 }
 
 /**
- * @param {string} hookText
- * @param {string} outputDir
- * @param {string} genreKey
- * @param {string|null} thumbnailQuery
- * @returns {Promise<string>}
+ * @param {object} [options]
+ * @param {'center'|'corner'} [options.layout='center'] — corner: 짧은 훅 우하단 (롱폼용)
  */
 async function generateThumbnail(
   hookText,
   outputDir,
   genreKey = DEFAULT_GENRE,
   thumbnailQuery = null,
+  options = {},
 ) {
+  const layout = options.layout === 'corner' ? 'corner' : 'center';
   const genre = getGenre(genreKey);
   const canvas = createCanvas(WIDTH, HEIGHT);
   const ctx = canvas.getContext('2d');
@@ -138,55 +137,111 @@ async function generateThumbnail(
   ctx.fillStyle = genre.thumbnailAccent;
   ctx.fillRect((WIDTH - lineWidth) / 2, 56, lineWidth, 2);
 
-  // 5. Hook 텍스트 — 중앙 배치
-  const maxTextWidth = WIDTH - 160;
-  const fontSize = hookText.length > 80 ? 72 : hookText.length > 50 ? 84 : 96;
-  ctx.font = `bold ${fontSize}px ${TITLE_FONT}`;
-  ctx.textAlign = 'center';
+  ctx.letterSpacing = '0px';
 
-  const lines = wrapText(ctx, hookText.toUpperCase(), maxTextWidth);
-  const lineHeight = fontSize * 1.15;
-  const totalHeight = lines.length * lineHeight;
-  const startY = (HEIGHT - totalHeight) / 2 + fontSize * 0.4;
-
-  // 텍스트 뒤 반투명 박스
-  const boxPadding = 24;
-  const boxX = 80 - boxPadding;
-  const boxY = startY - fontSize - boxPadding;
-  const boxW = WIDTH - 160 + boxPadding * 2;
-  const boxH = totalHeight + boxPadding * 2;
-  ctx.fillStyle = 'rgba(0,0,0,0.45)';
-  ctx.beginPath();
-  ctx.roundRect(boxX, boxY, boxW, boxH, 8);
-  ctx.fill();
-
-  // 텍스트 외곽선
-  ctx.strokeStyle = 'rgba(0,0,0,0.9)';
-  ctx.lineWidth = 12;
-  ctx.lineJoin = 'round';
-
-  lines.forEach((line, i) => {
-    const y = startY + i * lineHeight;
-    ctx.strokeText(line, WIDTH / 2, y);
-  });
-
-  // 텍스트 본문 — 흰색 + 강조색 그라디언트
-  lines.forEach((line, i) => {
-    const y = startY + i * lineHeight;
-    if (i === 0 && lines.length > 1) {
-      // 첫 줄 강조색
-      ctx.fillStyle = genre.thumbnailAccent;
-    } else {
-      ctx.fillStyle = '#FFFFFF';
+  if (layout === 'corner') {
+    // 5. Hook — 우하단 (짧은 문구, YouTube UI 여백 확보)
+    const padR = 56;
+    const padB = 64;
+    const maxTextWidth = Math.floor(WIDTH * 0.46);
+    const upper = hookText.toUpperCase();
+    const fontSize = upper.length > 48 ? 32 : upper.length > 32 ? 36 : 40;
+    ctx.font = `bold ${fontSize}px ${TITLE_FONT}`;
+    ctx.textAlign = 'right';
+    let lines = wrapText(ctx, upper, maxTextWidth);
+    if (lines.length > 2) {
+      lines = [lines[0], `${lines.slice(1).join(' ').slice(0, 44)}…`];
     }
-    ctx.fillText(line, WIDTH / 2, y);
-  });
 
-  // 6. 하단 워터마크
+    const lineHeight = fontSize * 1.12;
+    const totalH = lines.length * lineHeight;
+    let maxLineW = 0;
+    lines.forEach((ln) => {
+      maxLineW = Math.max(maxLineW, ctx.measureText(ln).width);
+    });
+    const boxPad = 14;
+    const boxW = maxLineW + boxPad * 2;
+    const boxH = totalH + boxPad * 2;
+    const rightX = WIDTH - padR;
+    const lastBaseline = HEIGHT - padB;
+    const boxY = lastBaseline - (lines.length - 1) * lineHeight - fontSize * 0.85 - boxPad;
+
+    const cornerShade = ctx.createRadialGradient(WIDTH - 40, HEIGHT - 40, 20, WIDTH, HEIGHT, 520);
+    cornerShade.addColorStop(0, 'rgba(0,0,0,0.82)');
+    cornerShade.addColorStop(0.55, 'rgba(0,0,0,0.35)');
+    cornerShade.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = cornerShade;
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.beginPath();
+    ctx.roundRect(rightX - boxW, boxY, boxW, boxH, 8);
+    ctx.fill();
+
+    ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+    ctx.lineWidth = 8;
+    ctx.lineJoin = 'round';
+    lines.forEach((line, i) => {
+      const y = lastBaseline - (lines.length - 1 - i) * lineHeight;
+      ctx.strokeText(line, rightX, y);
+    });
+    lines.forEach((line, i) => {
+      const y = lastBaseline - (lines.length - 1 - i) * lineHeight;
+      ctx.fillStyle = i === 0 ? genre.thumbnailAccent : '#FFFFFF';
+      ctx.fillText(line, rightX, y);
+    });
+  } else {
+    // 5. Hook 텍스트 — 중앙 배치 (숏폼 등)
+    const maxTextWidth = WIDTH - 160;
+    const fontSize = hookText.length > 80 ? 72 : hookText.length > 50 ? 84 : 96;
+    ctx.font = `bold ${fontSize}px ${TITLE_FONT}`;
+    ctx.textAlign = 'center';
+
+    const lines = wrapText(ctx, hookText.toUpperCase(), maxTextWidth);
+    const lineHeight = fontSize * 1.15;
+    const totalHeight = lines.length * lineHeight;
+    const startY = (HEIGHT - totalHeight) / 2 + fontSize * 0.4;
+
+    const boxPadding = 24;
+    const boxX = 80 - boxPadding;
+    const boxY = startY - fontSize - boxPadding;
+    const boxW = WIDTH - 160 + boxPadding * 2;
+    const boxH = totalHeight + boxPadding * 2;
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    ctx.beginPath();
+    ctx.roundRect(boxX, boxY, boxW, boxH, 8);
+    ctx.fill();
+
+    ctx.strokeStyle = 'rgba(0,0,0,0.9)';
+    ctx.lineWidth = 12;
+    ctx.lineJoin = 'round';
+
+    lines.forEach((line, i) => {
+      const y = startY + i * lineHeight;
+      ctx.strokeText(line, WIDTH / 2, y);
+    });
+
+    lines.forEach((line, i) => {
+      const y = startY + i * lineHeight;
+      if (i === 0 && lines.length > 1) {
+        ctx.fillStyle = genre.thumbnailAccent;
+      } else {
+        ctx.fillStyle = '#FFFFFF';
+      }
+      ctx.fillText(line, WIDTH / 2, y);
+    });
+  }
+
+  // 6. 하단 워터마크 (corner: 좌하단 — 훅과 겹침 방지)
   ctx.font = `18px ${TITLE_FONT}`;
-  ctx.textAlign = 'right';
+  ctx.textAlign = layout === 'corner' ? 'left' : 'right';
   ctx.fillStyle = 'rgba(255,255,255,0.4)';
-  ctx.fillText(channelName.toUpperCase(), WIDTH - 40, HEIGHT - 24);
+  const wmY = HEIGHT - 24;
+  if (layout === 'corner') {
+    ctx.fillText(channelName.toUpperCase(), 40, wmY);
+  } else {
+    ctx.fillText(channelName.toUpperCase(), WIDTH - 40, wmY);
+  }
 
   // 7. 좌측 강조 바 (얇게)
   ctx.fillStyle = genre.thumbnailAccent;
@@ -197,7 +252,24 @@ async function generateThumbnail(
   return outputPath;
 }
 
-module.exports = { generateThumbnail };
+/** 롱폼 썸네일용: metadata.thumbnailHook 우선, 없으면 스크립트 첫 유효 줄, 마지막으로 제목 축약 */
+function pickLongformThumbnailHook(metadata, script) {
+  const hook = metadata.thumbnailHook && String(metadata.thumbnailHook).trim();
+  if (hook) return hook.slice(0, 80);
+  const body = script
+    .replace(/^\[[A-Z_]+\]\s*/gm, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+  const firstLine = body.split(/\n/).map((l) => l.trim()).find((l) => l.length > 15);
+  if (firstLine) {
+    const cut = firstLine.slice(0, 52).trim();
+    return firstLine.length > 52 ? `${cut}…` : cut;
+  }
+  const title = (metadata.title || '').trim();
+  return title.length > 42 ? `${title.substring(0, 42).trim()}…` : title;
+}
+
+module.exports = { generateThumbnail, pickLongformThumbnailHook };
 
 if (require.main === module) {
   require('dotenv').config();
