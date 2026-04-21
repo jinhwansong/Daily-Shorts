@@ -113,19 +113,19 @@ async function composeLongformVideo(clipPaths, imagePaths, audioPath, assPath, o
     );
   }
 
-  // 각 DALL-E 이미지: scale/crop + Ken Burns + trim → [limg_j]
-  // 주의: [ic0] 같은 라벨은 FFmpeg가 stream specifier로 오해석할 수 있음 (Invalid stream specifier: ic0)
+  // 각 DALL-E 이미지: scale/crop + Ken Burns + trim → [still_j]
+  // FFmpeg는 [ic0], [limg0] 등 일부 패드를 stream specifier로 오해석함 — 짧은 영단어 접두 피함
   for (let j = 0; j < M; j++) {
     filterParts.push(
       `[${N + j}:v]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},` +
         `zoompan=z='min(zoom+${inc},${maxZ})':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${W}x${H}:fps=30,` +
-        `trim=0:${IMG_SEG},setpts=PTS-STARTPTS[limg${j}]`
+        `trim=0:${IMG_SEG},setpts=PTS-STARTPTS[still${j}]`
     );
   }
 
   // 세그먼트 순서대로 concat 입력 레이블 조합
   const segLabels = segments
-    .map((s) => (s.type === 'clip' ? `[vc${s.idx}]` : `[limg${s.idx}]`))
+    .map((s) => (s.type === 'clip' ? `[vc${s.idx}]` : `[still${s.idx}]`))
     .join('');
   filterParts.push(`${segLabels}concat=n=${totalSegs}:v=1:a=0[vcat]`);
 
