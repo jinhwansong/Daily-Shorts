@@ -72,7 +72,7 @@ async function fetchPexelsImage(query, outputDir) {
 
 /**
  * @param {object} [options]
- * @param {'center'|'corner'} [options.layout='center'] — corner: 짧은 훅 우하단 (롱폼용)
+ * @param {'bottom'|'center'|'corner'} [options.layout='bottom'] — bottom: 숏폼 기본 하단 중앙; corner: 롱폼 우하단
  */
 async function generateThumbnail(
   hookText,
@@ -81,7 +81,8 @@ async function generateThumbnail(
   thumbnailQuery = null,
   options = {},
 ) {
-  const layout = options.layout === 'corner' ? 'corner' : 'center';
+  const layout =
+    options.layout === 'corner' ? 'corner' : options.layout === 'center' ? 'center' : 'bottom';
   const genre = getGenre(genreKey);
   const canvas = createCanvas(WIDTH, HEIGHT);
   const ctx = canvas.getContext('2d');
@@ -190,8 +191,46 @@ async function generateThumbnail(
       ctx.fillStyle = i === 0 ? genre.thumbnailAccent : '#FFFFFF';
       ctx.fillText(line, rightX, y);
     });
+  } else if (layout === 'bottom') {
+    // 5. Hook — 하단 중앙 (숏폼 기본, 워터마크와 겹치지 않게 위로)
+    const padB = 100;
+    const maxTextWidth = WIDTH - 140;
+    const upper = hookText.toUpperCase();
+    const fontSize = upper.length > 72 ? 52 : upper.length > 48 ? 60 : 68;
+    ctx.font = `bold ${fontSize}px ${TITLE_FONT}`;
+    ctx.textAlign = 'center';
+    const lines = wrapText(ctx, upper, maxTextWidth);
+    const lineHeight = fontSize * 1.12;
+    const lastBaseline = HEIGHT - padB;
+    let maxLineW = 0;
+    lines.forEach((ln) => {
+      maxLineW = Math.max(maxLineW, ctx.measureText(ln).width);
+    });
+    const boxPad = 18;
+    const boxW = maxLineW + boxPad * 2;
+    const boxH = lines.length * lineHeight + boxPad * 2;
+    const boxX = (WIDTH - boxW) / 2;
+    const boxY = lastBaseline - (lines.length - 1) * lineHeight - fontSize * 0.85 - boxPad;
+
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.beginPath();
+    ctx.roundRect(boxX, boxY, boxW, boxH, 8);
+    ctx.fill();
+
+    ctx.strokeStyle = 'rgba(0,0,0,0.88)';
+    ctx.lineWidth = 10;
+    ctx.lineJoin = 'round';
+    lines.forEach((line, i) => {
+      const y = lastBaseline - (lines.length - 1 - i) * lineHeight;
+      ctx.strokeText(line, WIDTH / 2, y);
+    });
+    lines.forEach((line, i) => {
+      const y = lastBaseline - (lines.length - 1 - i) * lineHeight;
+      ctx.fillStyle = i === 0 ? genre.thumbnailAccent : '#FFFFFF';
+      ctx.fillText(line, WIDTH / 2, y);
+    });
   } else {
-    // 5. Hook 텍스트 — 중앙 배치 (숏폼 등)
+    // 5. Hook 텍스트 — 화면 정중앙 (레거시 / layout: 'center')
     const maxTextWidth = WIDTH - 160;
     const fontSize = hookText.length > 80 ? 72 : hookText.length > 50 ? 84 : 96;
     ctx.font = `bold ${fontSize}px ${TITLE_FONT}`;
@@ -232,12 +271,12 @@ async function generateThumbnail(
     });
   }
 
-  // 6. 하단 워터마크 (corner: 좌하단 — 훅과 겹침 방지)
+  // 6. 하단 워터마크 (corner·bottom: 좌하단 — 훅과 겹침 방지)
   ctx.font = `18px ${TITLE_FONT}`;
-  ctx.textAlign = layout === 'corner' ? 'left' : 'right';
+  ctx.textAlign = layout === 'corner' || layout === 'bottom' ? 'left' : 'right';
   ctx.fillStyle = 'rgba(255,255,255,0.4)';
   const wmY = HEIGHT - 24;
-  if (layout === 'corner') {
+  if (layout === 'corner' || layout === 'bottom') {
     ctx.fillText(channelName.toUpperCase(), 40, wmY);
   } else {
     ctx.fillText(channelName.toUpperCase(), WIDTH - 40, wmY);
