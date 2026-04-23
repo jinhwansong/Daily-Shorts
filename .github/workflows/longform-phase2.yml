@@ -2,10 +2,10 @@
 # 매일 KST 10:00 (UTC 01:00) 실행 — Phase 1로부터 11시간 후
 name: Longform Phase 2 - Compose & Upload
 
-on:
-  schedule:
-    - cron: '0 1 * * *'    # UTC 01:00 = KST 10:00
-  workflow_dispatch:
+on: 'workflow_dispatch'
+  # schedule:
+  #   - cron: '0 1 * * *'    # UTC 01:00 = KST 10:00
+  # workflow_dispatch:
 
 concurrency:
   group: longform-phase2

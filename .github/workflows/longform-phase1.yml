@@ -2,10 +2,10 @@
 # 매일 KST 22:00 (UTC 13:00) 실행
 name: Longform Phase 1 - Batch Submit
 
-on:
-  schedule:
-    - cron: '0 13 * * *'   # UTC 13:00 = KST 22:00
-  workflow_dispatch:
+on: 'workflow_dispatch'
+  # schedule:
+  #  # - cron: '0 13 * * *'   # UTC 13:00 = KST 22:00
+  # workflow_dispatch:
 
 concurrency:
   group: longform-phase1
