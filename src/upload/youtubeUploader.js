@@ -56,15 +56,22 @@ function buildDescription(description, tags) {
   return `${body}\n\n${tagLine}\n\n#Shorts`;
 }
 
+/** YouTube snippet.title max length */
+const YOUTUBE_TITLE_MAX = 100;
+
 async function uploadVideo(videoPath, { title, description, tags }, genreKey = 'mystery') {
   const youtube = getYouTubeClient(genreKey);
   const fullDescription = buildDescription(description, tags);
   const privacyStatus = resolvePrivacyStatus();
+  const safeTitle = String(title == null ? '' : title)
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, YOUTUBE_TITLE_MAX) || 'Video';
   const response = await youtube.videos.insert({
     part: ['snippet', 'status'],
     requestBody: {
       snippet: {
-        title,
+        title: safeTitle,
         description: fullDescription,
         tags: [...new Set([...tags, 'shorts'])],
         categoryId: '22',

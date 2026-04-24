@@ -120,10 +120,13 @@ async function runPipeline(topic, genreKey) {
     fs.writeFileSync(path.join(outputDir, 'metadata.json'), JSON.stringify(metadata, null, 2));
   }
 
-  // 썸네일 카피: THUMBNAIL_LINE(자극적) 우선, 없으면 제목
+  // 썸네일 카피: THUMBNAIL_LINE(제목과 이어지는 훅) 우선, 없으면 짧은 제목 일부
+  const THUMB_HOOK_MAX = 40;
   const hookSource = (metadata.thumbnailLine && String(metadata.thumbnailLine).trim()) || metadata.title;
   const hookText =
-    hookSource.length > 42 ? `${hookSource.substring(0, 42).trim()}…` : hookSource;
+    hookSource.length > THUMB_HOOK_MAX
+      ? `${hookSource.substring(0, THUMB_HOOK_MAX).trim()}…`
+      : hookSource;
 
   const [finalPath, thumbnailPath] = await Promise.all([
     composeVideo(videoPath, audioPath, assPath, outputDir, {

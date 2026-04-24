@@ -118,28 +118,6 @@ async function generateThumbnail(
   ctx.fillStyle = gradientOverlay;
   ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
-  // 3. 상단 어두운 그라디언트 (채널명 가독성)
-  const topGradient = ctx.createLinearGradient(0, 0, 0, 120);
-  topGradient.addColorStop(0, 'rgba(0,0,0,0.7)');
-  topGradient.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = topGradient;
-  ctx.fillRect(0, 0, WIDTH, 120);
-
-  // 4. 채널명 (상단 중앙)
-  const channelName = genre.channelName || genre.label;
-  ctx.font = `bold 26px ${TITLE_FONT}`;
-  ctx.textAlign = 'center';
-  ctx.fillStyle = genre.thumbnailAccent;
-  ctx.letterSpacing = '4px';
-  ctx.fillText(channelName.toUpperCase(), WIDTH / 2, 48);
-
-  // 채널명 하단 라인
-  const lineWidth = ctx.measureText(channelName.toUpperCase()).width + 40;
-  ctx.fillStyle = genre.thumbnailAccent;
-  ctx.fillRect((WIDTH - lineWidth) / 2, 56, lineWidth, 2);
-
-  ctx.letterSpacing = '0px';
-
   if (layout === 'corner') {
     // 5. Hook — 우하단 (짧은 문구, YouTube UI 여백 확보)
     const padR = 56;
@@ -230,7 +208,7 @@ async function generateThumbnail(
       ctx.fillText(line, WIDTH / 2, y);
     });
   } else {
-    // 5. Hook 텍스트 — 화면 정중앙 (레거시 / layout: 'center')
+    // 5. Hook — 화면 정중앙 (레거시 / layout: 'center')
     const maxTextWidth = WIDTH - 160;
     const fontSize = hookText.length > 80 ? 72 : hookText.length > 50 ? 84 : 96;
     ctx.font = `bold ${fontSize}px ${TITLE_FONT}`;
@@ -271,18 +249,7 @@ async function generateThumbnail(
     });
   }
 
-  // 6. 하단 워터마크 (corner·bottom: 좌하단 — 훅과 겹침 방지)
-  ctx.font = `18px ${TITLE_FONT}`;
-  ctx.textAlign = layout === 'corner' || layout === 'bottom' ? 'left' : 'right';
-  ctx.fillStyle = 'rgba(255,255,255,0.4)';
-  const wmY = HEIGHT - 24;
-  if (layout === 'corner' || layout === 'bottom') {
-    ctx.fillText(channelName.toUpperCase(), 40, wmY);
-  } else {
-    ctx.fillText(channelName.toUpperCase(), WIDTH - 40, wmY);
-  }
-
-  // 7. 좌측 강조 바 (얇게)
+  // 6. 좌측 강조 바 (얇게)
   ctx.fillStyle = genre.thumbnailAccent;
   ctx.fillRect(0, 0, 5, HEIGHT);
 

@@ -15,6 +15,17 @@ const SHORTS_MAX_WORDS = Math.max(
   Math.min(120, parseInt(process.env.SHORTS_MAX_WORDS || '95', 10))
 );
 
+/** YouTube API snippet.title hard limit; 파싱 실패 시 토픽 폴백도 잘릴 수 있게 */
+const YOUTUBE_TITLE_MAX = 100;
+const SHORTS_TITLE_SOFT_MAX = 55;
+const THUMBNAIL_ONIMAGE_MAX = 40;
+
+function collapseWhitespace(s) {
+  return String(s || '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function loadPrompt(genreKey) {
   const genre = getGenre(genreKey);
   return fs.readFileSync(genre.promptFile, 'utf-8');
@@ -75,23 +86,23 @@ async function generateMetadata(script, topic, genreKey = DEFAULT_GENRE) {
       {
         role: 'user',
         content: `Based on this YouTube Shorts script (genre: ${genre.label}), generate:
-1. YouTube title — scroll-stopping, US mystery/true-crime Shorts style (max 55 characters, count spaces)
-2. Thumbnail headline — SEPARATE from the title: shorter, bolder, more "rage click" / curiosity (max 34 characters). Can be more intense than the title; still no slurs, no false claims about real people beyond what the script implies.
+1. YouTube title — US mystery/true-crime Shorts, SHORT and high-arousal: curiosity, dread, "how is this possible?" energy (aim ${SHORTS_TITLE_SOFT_MAX} characters or less; never exceed ${YOUTUBE_TITLE_MAX} characters including spaces). Not a long documentary sentence; not a copy-paste of the topic line.
+2. Thumbnail on-image line (THUMBNAIL_LINE) — the *second beat* of the hook: a phrase that *pairs with* the title (completes the thought, adds the twist, or names the shock detail). It must feel like a continuation of the title, not a separate brand tag. Max ${THUMBNAIL_ONIMAGE_MAX} characters. Still no slurs; no false claims about real people beyond what the script implies. NEVER include a channel name, "subscribe", "Shorts", or any branding.
 3. A short description (2-3 sentences, NO spoilers, build curiosity only)
 4. 5 relevant hashtags
 5. A Pexels VIDEO/image search query (2-5 words, dark, cinematic, matches the story mood — used for background footage)
 
 YouTube TITLE rules:
-- Start with action, impossibility, shock, or a number
-- Use specific names or places when it fits
+- Open with a hook: mystery, impossibility, a number, a name, or a place — whichever hits hardest first
+- Use specific names or places when it fits, within the character budget
 - Normal Title Case or sentence case — not ALL CAPS for the whole title
-- MAXIMUM 55 characters (HARD LIMIT)
-- Punchy fragments beat long explanations
+- Prefer ${SHORTS_TITLE_SOFT_MAX} characters or less; always stay under ${YOUTUBE_TITLE_MAX} characters
+- Tight, provocative fragments — never paste the long topic line verbatim
 
 SEARCH + Shorts FEED (both matter for this genre):
-- If the script is about a real, named case (person, place, ship, flight, well-known nickname), put that EXACT searchable name or phrase as EARLY as possible in the TITLE (ideally in the first half, still within 55 chars). Many viewers type the name in YouTube search, not a documentary-style phrase alone.
+- If the script is about a real, named case (person, place, ship, flight, well-known nickname), put that EXACT searchable name or phrase as EARLY as possible in the TITLE (ideally in the first half, still within ${SHORTS_TITLE_SOFT_MAX} chars). Many viewers type the name in YouTube search, not a documentary-style phrase alone.
 - Do NOT bury the only recognizable search token at the very end or hide it behind vague wording only (e.g. if the script is clearly about one famous missing person, the title should contain their name or the case name viewers search, not only generic words like "The Vanishing" with no name).
-- THUMBNAIL_LINE can stay more emotional or fragmentary; let the TITLE carry the literal name/keyword when the case has one.
+- THUMBNAIL_LINE: complements the title (e.g. title sets who/where, line delivers the eerie detail). Not a second title; not a channel name.
 
 DESCRIPTION rules:
 - First sentence must naturally include the same core name or case identifier the script is about (one clear phrase—no keyword stuffing). Helps search previews and viewers who clicked from search see they are in the right video.
@@ -100,9 +111,9 @@ TAGS rules:
 - Include 2–3 tags that are literal searchable phrases or proper names from the script (when applicable), plus broader mystery/true-crime tags.
 
 THUMBNAIL_LINE rules (on-image text, very short):
-- MAXIMUM 34 characters (HARD LIMIT)
-- 2–6 words ideal; can feel more aggressive than TITLE (e.g. unfinished thought, single shocking phrase)
-- No hashtags; no quotes in the line
+- MAXIMUM ${THUMBNAIL_ONIMAGE_MAX} characters (HARD LIMIT)
+- 2–6 words ideal; can feel more aggressive than TITLE (e.g. unfinished thought, one shocking detail)
+- No hashtags; no quotes in the line; no channel or platform names
 
 Topic line (source of truth for names/places—TITLE and tags should align with it when the script matches):
 ${topic}
@@ -121,8 +132,8 @@ THUMBNAIL: <pexels search query>${metadataPromptAddon()}`,
   });
 
   const raw = message.content[0].text.trim();
-  const titleMatch = raw.match(/TITLE:\s*(.+)/);
-  const thumbLineMatch = raw.match(/THUMBNAIL_LINE:\s*(.+)/);
+  const titleMatch = raw.match(/^TITLE:\s*([^\n]+)/m);
+  const thumbLineMatch = raw.match(/^THUMBNAIL_LINE:\s*([^\n]+)/m);
   const descMatch = raw.match(/DESCRIPTION:\s*([\s\S]+?)(?=TAGS:|$)/);
   const tagsMatch = raw.match(/TAGS:\s*(.+)/);
   const thumbnailMatch = raw.match(/THUMBNAIL:\s*(.+)/);
@@ -135,11 +146,18 @@ THUMBNAIL: <pexels search query>${metadataPromptAddon()}`,
   const baseDesc = descMatch ? descMatch[1].trim() : '';
   const channelCredit = genre.channelName ? `\n\n— ${genre.channelName}` : '';
 
-  const thumbnailLine = thumbLineMatch ? thumbLineMatch[1].trim() : null;
+  const rawTitle = titleMatch ? collapseWhitespace(titleMatch[1]) : '';
+  const title =
+    (rawTitle || collapseWhitespace(topic) || 'Mystery Short').slice(0, YOUTUBE_TITLE_MAX) ||
+    'Mystery Short';
+  const thumbnailLineRaw = thumbLineMatch ? collapseWhitespace(thumbLineMatch[1]) : null;
+  const thumbnailLineClamped = thumbnailLineRaw
+    ? thumbnailLineRaw.slice(0, THUMBNAIL_ONIMAGE_MAX) || null
+    : null;
 
   return {
-    title: titleMatch ? titleMatch[1].trim() : topic,
-    thumbnailLine: thumbnailLine || undefined,
+    title,
+    thumbnailLine: thumbnailLineClamped || undefined,
     description: baseDesc + channelCredit,
     tags: [...new Set(allTags)],
     thumbnailQuery: thumbnailMatch ? thumbnailMatch[1].trim() : null,
@@ -216,10 +234,10 @@ Generate:
 2. A description (3–4 sentences, builds curiosity without spoiling, NO hashtags in body)
 3. 6 relevant tags (real case names, genre tags)
 4. A Pexels search query (2–4 words, dark atmospheric, for thumbnail background)
-5. THUMBNAIL_HOOK — ONE short on-image line for the thumbnail (NOT the full title). Pull wording or vibe from the script: a provocative curiosity fragment (max 52 characters). Documentary tone; no false claims; can be punchier than TITLE but still serious.
+5. THUMBNAIL_HOOK — ONE short on-image line for the thumbnail (NOT the full title). Pairs with the title as a "second line" of the hook. Provocative curiosity fragment (max 52 characters). No channel name, "subscribe", or platform branding. Documentary tone; no false claims; can be punchier than TITLE but still serious.
 
 THUMBNAIL_HOOK rules:
-- Max 52 characters, single line, no quotes
+- Max 52 characters, single line, no quotes; never a channel or brand name
 - Different from TITLE — tease / tension, not the episode headline
 - Prefer a striking phrase that appears in or is clearly implied by the script
 
@@ -239,11 +257,11 @@ THUMBNAIL_HOOK: <short hook line>`,
   });
 
   const raw = message.content[0].text.trim();
-  const titleMatch = raw.match(/TITLE:\s*(.+)/);
+  const titleMatch = raw.match(/^TITLE:\s*([^\n]+)/m);
   const descMatch = raw.match(/DESCRIPTION:\s*([\s\S]+?)(?=TAGS:|$)/);
   const tagsMatch = raw.match(/TAGS:\s*(.+)/);
-  const thumbnailMatch = raw.match(/THUMBNAIL:\s*(.+)/);
-  const hookMatch = raw.match(/THUMBNAIL_HOOK:\s*(.+)/);
+  const thumbnailMatch = raw.match(/^THUMBNAIL:\s*([^\n]+)/m);
+  const hookMatch = raw.match(/^THUMBNAIL_HOOK:\s*([^\n]+)/m);
 
   const channelTag = genre.channelName ? genre.channelName.toLowerCase() : '';
   const baseTags = tagsMatch ? tagsMatch[1].split(',').map((t) => t.trim()) : ['mystery'];
@@ -253,12 +271,17 @@ THUMBNAIL_HOOK: <short hook line>`,
   const chapterBlock = chapters.length ? `\n\n${chapters.join('\n')}` : '';
   const channelCredit = genre.channelName ? `\n\n— ${genre.channelName}` : '';
 
+  const rawLfTitle = titleMatch ? collapseWhitespace(titleMatch[1]) : '';
+  const lfTitle =
+    (rawLfTitle || collapseWhitespace(topic) || 'Mystery Documentary').slice(0, YOUTUBE_TITLE_MAX) ||
+    'Mystery Documentary';
+
   return {
-    title: titleMatch ? titleMatch[1].trim() : topic,
+    title: lfTitle,
     description: baseDesc + chapterBlock + channelCredit,
     tags: [...new Set(allTags)],
-    thumbnailQuery: thumbnailMatch ? thumbnailMatch[1].trim() : null,
-    thumbnailHook: hookMatch ? hookMatch[1].trim().slice(0, 52) : null,
+    thumbnailQuery: thumbnailMatch ? collapseWhitespace(thumbnailMatch[1]) : null,
+    thumbnailHook: hookMatch ? collapseWhitespace(hookMatch[1]).slice(0, 52) : null,
   };
 }
 
