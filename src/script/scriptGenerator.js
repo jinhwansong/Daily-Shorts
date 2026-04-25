@@ -1,7 +1,7 @@
 const fs = require('fs');
 const { getGenre, DEFAULT_GENRE } = require('../genres');
 const { scriptUserMessageAddon, metadataPromptAddon } = require('../utils/contentIntensity');
-const { completeLlm, completeLlmLongform } = require('./scriptLlm');
+const { completeLlm, completeLlmLongform, completeLlmFactcheck } = require('./scriptLlm');
 
 /** 쇼츠 TTS 길이 상한(단어). mystery 등 숏폼만 적용 — env SHORTS_MAX_WORDS 로 조정 가능 */
 const SHORTS_MAX_WORDS = Math.max(
@@ -71,63 +71,114 @@ function extractYears(text) {
 }
 
 /**
- * 소스(위키+불릿)를 기준으로 스크립트의 구체적 주장을 검증·수정.
- *
- * 동작:
- *  1) 소스가 없으면 즉시 원문 반환 (비용 0)
- *  2) 연도만 있고 모두 소스에 있으면 검증 패스를 건너뛰는 빠른 경로 없음
- *     — 연도 외 다른 사실도 틀릴 수 있으므로 소스가 있으면 항상 1회 실행
- *  3) LLM이 "ALL_CORRECT" 를 반환하면 원문 유지, 그 외엔 수정본 사용
+ * 소스에 없는 연도를 명시적으로 교체하는 최후 수단 패스
  */
-async function factCheckAndFixScript(script, wikiText, factBullets) {
-  const sourceText = [wikiText, factBullets].filter(Boolean).join('\n');
-  if (!sourceText.trim()) return script; // 소스 없으면 검증 불가
-
-  // 빠른 연도 사전 검사 — 소스에 없는 연도가 있으면 무조건 수정 패스 실행
-  const scriptYears = extractYears(script);
-  const sourceYears = extractYears(sourceText);
-  const badYears = [...scriptYears].filter((y) => !sourceYears.has(y));
-  if (badYears.length) {
-    console.warn(`  [Fact-check] 소스에 없는 연도: ${badYears.join(', ')}`);
-  }
-
-  console.log('  [Fact-check] 스크립트 사실 검증 중...');
-
-  const fixed = await completeLlm({
-    maxTokens: 320,
-    user: `You are a fact-checker for a short video script. Compare every specific claim in the SCRIPT against the VERIFIED SOURCES below.
+async function forceFixBadYears(script, badYears, sourceText) {
+  console.warn(`  [Fact-check] 강제 연도 수정 패스: ${badYears.join(', ')}`);
+  const fixed = await completeLlmFactcheck({
+    maxTokens: 300,
+    user: `The script contains years that are CONFIRMED wrong (not in the sources): ${badYears.join(', ')}.
 
 VERIFIED SOURCES:
-${sourceText.slice(0, 5000)}
+${sourceText.slice(0, 4000)}
 
 SCRIPT:
 ${script}
 
-Check for errors in:
-- Years / dates (e.g. wrong decade or century)
-- Names of people, places, ships, cases
-- Monetary amounts or numbers stated as fact
-- Outcomes: arrests, convictions, acquittals, whether a body/remains were found
-- "First", "largest", "only" superlatives not supported by sources
+For each wrong year:
+- If the correct year is in sources, use it.
+- If no correct year is findable in sources, remove the year or rephrase without a specific year (e.g. "decades ago", "in the early twentieth century").
+- Do NOT add any year not in sources.
 
-Rules for your response:
-- If ALL specific claims in the script are supported by the sources (or are vague enough not to be checkable), output exactly: ALL_CORRECT
-- If ANY claim is unsupported or contradicts sources:
-  - Fix it using the sources (correct year, correct name, etc.)
-  - If you cannot find the correct value in sources, remove the specific claim or rephrase vaguely (e.g. "at some point" instead of a wrong year)
-  - Do NOT add new specific facts not in the sources
-  - Output ONLY the corrected script, nothing else — no explanation, no preamble
-- Keep the script voice, tone, and word count as close to the original as possible.`,
+Output ONLY the corrected script. No labels, no explanation.`,
+  });
+  return clampShortsScript(fixed.trim(), SHORTS_MAX_WORDS);
+}
+
+/**
+ * 소스(위키+불릿)를 기준으로 스크립트의 구체적 주장을 검증·수정.
+ *
+ * 핵심 원칙:
+ *  - 소스가 없으면 즉시 반환(비용 0)
+ *  - 정규식으로 연도를 먼저 하드체크 → 소스에 없는 연도는 LLM 결과와 무관하게 강제 수정
+ *  - LLM 팩트체크는 citation-grounded: 각 주장마다 소스 문장을 직접 인용하게 함
+ *    → 인용 못 하면 NOT_FOUND로 처리, 이 경우 PASS 불가
+ */
+async function factCheckAndFixScript(script, wikiText, factBullets) {
+  const sourceText = [wikiText, factBullets].filter(Boolean).join('\n');
+  if (!sourceText.trim()) return script;
+
+  // 1단계: 정규식 하드체크 — LLM보다 먼저, LLM이 무시해도 재수행
+  const scriptYears = extractYears(script);
+  const sourceYears = extractYears(sourceText);
+  const badYears = [...scriptYears].filter((y) => !sourceYears.has(y));
+  if (badYears.length) {
+    console.warn(`  [Fact-check] 소스에 없는 연도 감지: ${badYears.join(', ')}`);
+  }
+
+  // 2단계: citation-grounded LLM 검증
+  console.log('  [Fact-check] 사실 검증 중 (citation-grounded)...');
+
+  const hardYearWarning = badYears.length
+    ? `\n⚠ HARD FAIL — regex confirmed these years are NOT in sources: ${badYears.join(', ')}. You MUST fix them. Do NOT output PASS.\n`
+    : '';
+
+  const raw = await completeLlmFactcheck({
+    maxTokens: 520,
+    user: `You are a citation-grounded fact-checker. Work through the steps below.
+
+VERIFIED SOURCES:
+${sourceText.slice(0, 5000)}
+
+SCRIPT TO CHECK:
+${script}
+${hardYearWarning}
+--- STEP 1: Identify every specific, checkable claim in the SCRIPT ---
+List each as:
+CLAIM: <the claim> | SUPPORT: <exact quote from VERIFIED SOURCES> or SUPPORT: NOT_FOUND
+
+Types to check: years/decades, people's names, place names, monetary amounts, "body found/not found", convictions/acquittals, "first"/"only"/"largest" superlatives.
+
+--- STEP 2: Count NOT_FOUND items ---
+VERDICT: PASS   ← only if every CLAIM has a real SUPPORT quote AND no ⚠ HARD FAIL above
+VERDICT: FAIL   ← if any NOT_FOUND, or ⚠ HARD FAIL is present
+
+--- STEP 3: Output ---
+If VERDICT: PASS → output exactly: ALL_CORRECT
+If VERDICT: FAIL → output the corrected script only (no labels, no preamble).
+  Fix rules: replace each NOT_FOUND claim with correct value from sources; if no correct value, rephrase vaguely or remove; keep voice and word count close to original; do NOT add new specific facts.`,
   });
 
-  const result = fixed.trim();
-  if (result === 'ALL_CORRECT' || result.toUpperCase().startsWith('ALL_CORRECT')) {
+  const result = raw.trim();
+
+  // 출력에서 STEP 3 이후 결과만 추출 (chain-of-thought 분리)
+  let finalOutput = result;
+  const step3Match = result.match(/STEP\s*3[^:\n]*:?\s*\n+([\s\S]+)$/i);
+  if (step3Match) finalOutput = step3Match[1].trim();
+
+  const isAllCorrect = /^ALL_CORRECT/i.test(finalOutput);
+
+  // LLM이 PASS라고 해도 하드체크가 잡은 연도가 있으면 강제 수정
+  if (isAllCorrect && badYears.length) {
+    console.warn('  [Fact-check] LLM이 PASS했지만 연도 이상 — 강제 수정');
+    return forceFixBadYears(script, badYears, sourceText);
+  }
+
+  if (isAllCorrect) {
     console.log('  [Fact-check] 이상 없음 ✓');
     return script;
   }
 
+  // CLAIM: 라인이 너무 많으면 분석만 출력된 것 (스크립트 추출 실패)
+  const claimLineCount = (finalOutput.match(/^CLAIM:/gm) || []).length;
+  if (claimLineCount > 2) {
+    console.warn('  [Fact-check] 스크립트 파싱 실패');
+    if (badYears.length) return forceFixBadYears(script, badYears, sourceText);
+    return script;
+  }
+
   console.warn('  [Fact-check] 수정 적용됨');
-  return clampShortsScript(result, SHORTS_MAX_WORDS);
+  return clampShortsScript(finalOutput, SHORTS_MAX_WORDS);
 }
 
 /**
@@ -182,6 +233,9 @@ ${fact}
   const raw = await completeLlm({
     system: systemPrompt,
     user: `Topic: ${topic}${wikiBlock}${factBlock}${scriptUserMessageAddon()}
+
+SOURCE DISCIPLINE — apply before writing a single word:
+Before writing the script, mentally note the specific years, names, and numbers that appear in the Wikipedia block and fact bullets above. You are ONLY allowed to use those exact values. If a year, name, or number is not visible in the sources above, do NOT write it — write vaguely instead (e.g. "decades later", "in the early twentieth century", "a significant sum") or omit it.
 
 BALANCED GROUNDING (read carefully):
 (1) Do **not** invent or imply facts, dates, or outcomes that are not in the Wikipedia and fact bullets above. No extra names, years, or "body found" if not allowed.

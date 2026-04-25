@@ -18,6 +18,25 @@ function getProvider() {
   return raw;
 }
 
+/**
+ * 팩트체크 전용 프로바이더.
+ * FACTCHECK_LLM_PROVIDER 가 없으면 SCRIPT_LLM_PROVIDER 를 따름.
+ * 생성 모델과 달리 설정하면 서로 다른 학습 편향으로 검증 → 환각 누락 감소.
+ */
+function getFactcheckProvider() {
+  const raw = (
+    process.env.FACTCHECK_LLM_PROVIDER ||
+    process.env.SCRIPT_LLM_PROVIDER ||
+    'anthropic'
+  ).toString().trim().toLowerCase();
+  if (!PROVIDERS.has(raw)) {
+    throw new Error(
+      `FACTCHECK_LLM_PROVIDER must be one of: anthropic, openai, google (got "${raw}")`
+    );
+  }
+  return raw;
+}
+
 function defaultModel(provider) {
   if (process.env.SCRIPT_LLM_MODEL && String(process.env.SCRIPT_LLM_MODEL).trim()) {
     return String(process.env.SCRIPT_LLM_MODEL).trim();
@@ -25,6 +44,23 @@ function defaultModel(provider) {
   if (provider === 'openai') return process.env.OPENAI_TEXT_MODEL || 'gpt-4o-mini';
   if (provider === 'google') return process.env.GEMINI_TEXT_MODEL || 'gemini-2.0-flash';
   return process.env.CLAUDE_MODEL || 'claude-haiku-4-5-20251001';
+}
+
+/**
+ * 팩트체크 전용 모델.
+ * FACTCHECK_LLM_MODEL 이 없으면 프로바이더별 기본 검증 모델을 사용.
+ * 생성(Haiku 등)보다 한 단계 위 모델을 기본으로 설정해 두어 검증 정확도를 높임.
+ */
+function factcheckModel(provider) {
+  if (process.env.FACTCHECK_LLM_MODEL && String(process.env.FACTCHECK_LLM_MODEL).trim()) {
+    return String(process.env.FACTCHECK_LLM_MODEL).trim();
+  }
+  if (provider === 'anthropic') {
+    return process.env.CLAUDE_FACTCHECK_MODEL || 'claude-haiku-4-5-20251001';
+  }
+  if (provider === 'openai') return process.env.OPENAI_FACTCHECK_MODEL || 'gpt-4o-mini';
+  if (provider === 'google') return process.env.GEMINI_FACTCHECK_MODEL || 'gemini-2.0-flash';
+  return defaultModel(provider);
 }
 
 function longformModel(provider) {
@@ -38,11 +74,18 @@ function longformModel(provider) {
 }
 
 let _logged = false;
+let _factcheckLogged = false;
 
 function logOnce(provider, model) {
   if (_logged) return;
   _logged = true;
   console.log(`  [LLM] 스크립트·토픽: ${provider} / ${model}`);
+}
+
+function logFactcheckOnce(provider, model) {
+  if (_factcheckLogged) return;
+  _factcheckLogged = true;
+  console.log(`  [LLM] 팩트체크: ${provider} / ${model}`);
 }
 
 const anthropicClient = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -140,10 +183,76 @@ async function completeLlmLongform(p) {
   return completeLlm({ ...p, model: p.model || longformModel(prov) });
 }
 
+/**
+ * 팩트체크 전용 LLM 호출.
+ * FACTCHECK_LLM_PROVIDER / FACTCHECK_LLM_MODEL 로 생성 모델과 독립 설정 가능.
+ * 미설정 시 생성 모델과 같은 프로바이더·모델을 사용하므로 기존 동작과 호환됨.
+ */
+async function completeLlmFactcheck(p) {
+  const provider = getFactcheckProvider();
+  const model = p.model || factcheckModel(provider);
+  logFactcheckOnce(provider, model);
+
+  if (provider === 'anthropic') {
+    if (!process.env.ANTHROPIC_API_KEY) {
+      throw new Error('ANTHROPIC_API_KEY is required for factcheck (FACTCHECK_LLM_PROVIDER=anthropic)');
+    }
+    const payload = {
+      model,
+      max_tokens: p.maxTokens,
+      messages: [{ role: 'user', content: p.user }],
+    };
+    if (p.system && String(p.system).trim()) payload.system = p.system;
+    const msg = await anthropicClient.messages.create(payload);
+    return msg.content[0].text.trim();
+  }
+
+  if (provider === 'openai') {
+    if (!process.env.OPENAI_API_KEY) {
+      throw new Error('OPENAI_API_KEY is required for factcheck (FACTCHECK_LLM_PROVIDER=openai)');
+    }
+    const messages = [];
+    if (p.system) messages.push({ role: 'system', content: p.system });
+    messages.push({ role: 'user', content: p.user });
+    const r = await getOpenAI().chat.completions.create({
+      model,
+      messages,
+      max_tokens: p.maxTokens,
+      temperature: 0.1,
+    });
+    const text = r.choices[0]?.message?.content;
+    if (!text) throw new Error('OpenAI factcheck: empty response');
+    return String(text).trim();
+  }
+
+  if (provider === 'google') {
+    if (!process.env.GOOGLE_AI_API_KEY) {
+      throw new Error('GOOGLE_AI_API_KEY is required for factcheck (FACTCHECK_LLM_PROVIDER=google)');
+    }
+    const body =
+      p.system && p.system.trim()
+        ? `Follow these system instructions exactly.\n\n${p.system}\n\n---\n\n${p.user}`
+        : p.user;
+    const res = await getGoogleGenAI().models.generateContent({
+      model,
+      contents: body,
+      config: { maxOutputTokens: p.maxTokens, temperature: 0.1 },
+    });
+    const text = geminiExtractText(res);
+    if (!text) throw new Error('Gemini factcheck: empty response');
+    return text.trim();
+  }
+
+  throw new Error(`Unhandled FACTCHECK_LLM_PROVIDER: ${provider}`);
+}
+
 module.exports = {
   completeLlm,
   completeLlmLongform,
+  completeLlmFactcheck,
   getProvider,
+  getFactcheckProvider,
   defaultModel,
+  factcheckModel,
   longformModel,
 };
