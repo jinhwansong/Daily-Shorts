@@ -1,7 +1,38 @@
 /**
  * 스크립트·토픽·메타데이터 생성용 텍스트 LLM 라우터.
  * SCRIPT_LLM_PROVIDER=anthropic|openai|google (기본 anthropic)
+ *
+ * 팩트체크 전용 키(FACTCHECK_*) 는 루트 .env 를 직접 읽어 process.env 에 반영한다.
+ * 이유: (1) dotenv 기본 동작은 “이미 있는 환경 변수는 덮어쓰지 않음” — 셸/IDE에
+ *      SCRIPT_LLM_* 만 있어도 FACTCHECK 가 무시될 수 있음.
+ *     (2) index.js 가 dotenv 하기 전에 이 파일이 require 되는 경로가 있을 수 있음.
  */
+const path = require('path');
+const fs = require('fs');
+const dotenv = require('dotenv');
+
+const rootEnvPath = path.join(__dirname, '../../.env');
+if (fs.existsSync(rootEnvPath)) {
+  try {
+    const parsed = dotenv.parse(fs.readFileSync(rootEnvPath, 'utf8'));
+    const factcheckKeys = [
+      'FACTCHECK_LLM_PROVIDER',
+      'FACTCHECK_LLM_MODEL',
+      'CLAUDE_FACTCHECK_MODEL',
+      'OPENAI_FACTCHECK_MODEL',
+      'GEMINI_FACTCHECK_MODEL',
+    ];
+    for (const k of factcheckKeys) {
+      if (Object.prototype.hasOwnProperty.call(parsed, k)) {
+        const v = String(parsed[k] ?? '').trim();
+        if (v) process.env[k] = v;
+      }
+    }
+  } catch (_) {
+    /* ignore */
+  }
+}
+
 const Anthropic = require('@anthropic-ai/sdk');
 const OpenAI = require('openai');
 const { GoogleGenAI } = require('@google/genai');
@@ -74,7 +105,6 @@ function longformModel(provider) {
 }
 
 let _logged = false;
-let _factcheckLogged = false;
 
 function logOnce(provider, model) {
   if (_logged) return;
@@ -82,9 +112,7 @@ function logOnce(provider, model) {
   console.log(`  [LLM] 스크립트·토픽: ${provider} / ${model}`);
 }
 
-function logFactcheckOnce(provider, model) {
-  if (_factcheckLogged) return;
-  _factcheckLogged = true;
+function logFactcheck(provider, model) {
   console.log(`  [LLM] 팩트체크: ${provider} / ${model}`);
 }
 
@@ -191,7 +219,7 @@ async function completeLlmLongform(p) {
 async function completeLlmFactcheck(p) {
   const provider = getFactcheckProvider();
   const model = p.model || factcheckModel(provider);
-  logFactcheckOnce(provider, model);
+  logFactcheck(provider, model);
 
   if (provider === 'anthropic') {
     if (!process.env.ANTHROPIC_API_KEY) {
