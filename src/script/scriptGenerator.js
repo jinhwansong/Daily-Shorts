@@ -25,6 +25,40 @@ function loadPrompt(genreKey) {
   return fs.readFileSync(genre.promptFile, 'utf-8');
 }
 
+/** 하이쿠 1회: 위키+토픽에서만 불릿 추출 → 본문은 불릿+위키 밖의 구체 주장 금지 */
+function isShortsFactsStepEnabled() {
+  return (process.env.SHORTS_FACTS_STEP || '1').toString().trim() !== '0';
+}
+
+/**
+ * @param {string|undefined} wikiText
+ */
+async function generateShortsFactBullets(topic, wikiText, genreKey = DEFAULT_GENRE) {
+  const genre = getGenre(genreKey);
+  const wikiBlock =
+    wikiText && String(wikiText).trim().length > 0
+      ? `Wikipedia extract (grounding, may be incomplete):\n${String(wikiText).slice(0, 12000)}`
+      : 'No English Wikipedia article was retrieved. You MUST NOT invent years, ages, "first to", trial counts, body recovery, or locations. Use only the topic line; say what is not known rather than guess.';
+
+  const raw = await completeLlm({
+    maxTokens: 520,
+    user: `You are a fact-list assistant for a US ${genre.label} YouTube Short. No narrative, no story voice, no closing question.
+
+## Topic
+${topic}
+
+## Wikipedia / sources
+${wikiBlock}
+
+## Your output
+- 5–12 lines in English. Each line starts with "• " and states ONE checkable fact (a name, a year, a place, a documented outcome, or one explicit "do not say X" if the sources contradict a common myth).
+- If the Wikipedia text is present: every year, name, legal outcome, and whether remains were found must come from that text. If a year is not in the text, do not add years to the bullets. If the text says a body was never found, add a bullet that forbids claiming remains were found or discovered in a place.
+- If there is no Wikipedia: do not invent numbers or court details; 3–4 bullets that restate only the topic in neutral tone, and bullets that list what is unknown.
+- No speculation, no "probably", no rhetorical questions.`,
+  });
+  return raw.trim();
+}
+
 /**
  * 모델이 길이 지시를 어겼을 때 TTS·영상 길이 폭주 방지 — 단어 수 상한 + 가능하면 문장 끝에서 자름
  */
@@ -56,17 +90,27 @@ async function generateScript(topic, genreKey = DEFAULT_GENRE, options = {}) {
     ? `
 
 ## English Wikipedia (grounding)
-Use this for concrete facts (names, years, places, legal outcomes) when it matches the topic. It may be incomplete or occasionally wrong. **Do not invent** dates, names, or verdicts that are not here or in the next instructions; if a detail is missing, omit it or use vague phrasing.
+Use for names, years, places, legal outcomes, and "whether a body was found" only as stated here. It may be incomplete. If something is not here, do not add it. **Never** invent: years, "first" claims, number of trials, body/remains in a location, unless they appear in the fact bullets and/or this block.
 
 ${wiki}
+`
+    : '';
+  const fact = options.factBullets && String(options.factBullets).trim();
+  const factBlock = fact
+    ? `
+
+## Fact bullets (HARD; haiku pre-pass)
+The script’s specific claims (years, ages, "first" superlatives, physical evidence, body disposal, number of trials, place names) must be **supported by these bullets and the Wikipedia text above**—nothing else. If a hook line would add a new concrete fact, change the hook. If a bullet says "do not say X", treat X as forbidden in the whole script.
+
+${fact}
 `
     : '';
   const systemPrompt = loadPrompt(genreKey);
   const raw = await completeLlm({
     system: systemPrompt,
-    user: `Topic: ${topic}${wikiBlock}${scriptUserMessageAddon()}
+    user: `Topic: ${topic}${wikiBlock}${factBlock}${scriptUserMessageAddon()}
 
-Fact-check: Only state details supported by the Wikipedia block above (when present) and widely known public records. Do not invent facts or contradict established records; if uncertain, omit or speak in general terms.`,
+STRICT: Do not add concrete facts (numbers, dates, names, outcomes, "first" claims, remains/body details) that are not in the Wikipedia and/or fact-bullet sections above. Prefer tension and open questions that **do not assert** missing facts. If uncertain, stay vague. English only, Shorts length.`,
     maxTokens: 260,
   });
   const wcBefore = raw.split(/\s+/).filter(Boolean).length;
@@ -257,4 +301,11 @@ THUMBNAIL_HOOK: <short hook line>`,
   };
 }
 
-module.exports = { generateScript, generateMetadata, generateLongformScript, generateLongformMetadata };
+module.exports = {
+  generateScript,
+  generateMetadata,
+  generateLongformScript,
+  generateLongformMetadata,
+  generateShortsFactBullets,
+  isShortsFactsStepEnabled,
+};

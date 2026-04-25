@@ -4,7 +4,12 @@ const fs = require('fs');
 const path = require('path');
 const { DEFAULT_GENRE, getGenre } = require('./genres');
 const { generateTopics } = require('./script/topicGenerator');
-const { generateScript, generateMetadata } = require('./script/scriptGenerator');
+const {
+  generateScript,
+  generateMetadata,
+  generateShortsFactBullets,
+  isShortsFactsStepEnabled,
+} = require('./script/scriptGenerator');
 const { generateTTS } = require('./audio/ttsGenerator');
 const {
   fetchFreesoundBgm,
@@ -43,7 +48,7 @@ async function runPipeline(topic, genreKey) {
 
   console.log(`\n[${genre.label}] Topic: ${topic}`);
 
-  let wikiOptions = {};
+  const scriptOptions = {};
   if (isWikiContextEnabled()) {
     const wiki = await fetchWikipediaContext(topic);
     if (wiki) {
@@ -55,11 +60,18 @@ async function runPipeline(topic, genreKey) {
     } else {
       console.log('  [Wiki] (no en.wikipedia article to ground — script without extract)');
     }
-    wikiOptions = { wikiContext: wiki ? wiki.text : undefined };
+    scriptOptions.wikiContext = wiki ? wiki.text : undefined;
+  }
+
+  if (isShortsFactsStepEnabled()) {
+    const factBullets = await generateShortsFactBullets(topic, scriptOptions.wikiContext, genreKey);
+    scriptOptions.factBullets = factBullets;
+    fs.writeFileSync(path.join(outputDir, 'shorts_fact_bullets.txt'), factBullets);
+    console.log('  [Facts] haiku fact-bullet pass (see output/.../shorts_fact_bullets.txt)');
   }
 
   // 스크립트 + 메타데이터
-  const script = await generateScript(topic, genreKey, wikiOptions);
+  const script = await generateScript(topic, genreKey, scriptOptions);
   const metadata = await generateMetadata(script, topic, genreKey);
   fs.writeFileSync(path.join(outputDir, 'script.txt'), script);
   fs.writeFileSync(path.join(outputDir, 'metadata.json'), JSON.stringify(metadata, null, 2));
