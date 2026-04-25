@@ -21,18 +21,59 @@ function isEnabled() {
   return (process.env.SHORTS_WIKI_CONTEXT || '1').toString().trim() !== '0';
 }
 
-function searchQueryFromTopic(topic) {
-  const t = String(topic || '')
-    .replace(/[—–-].*$/s, ' ')
-    .replace(/^[^(]+\(([^)]+)\).*/, '$1')
-    .trim();
-  if (t.length < 4) return String(topic).slice(0, 120);
-  return t.slice(0, 180);
-}
-
 function isDisambiguation(title) {
   const s = String(title).toLowerCase();
   return s.includes('disambiguation') || s.includes('(disambig');
+}
+
+/**
+ * 토픽 문장에서 검색 쿼리 후보들을 우선순위 순서로 반환.
+ *
+ * 전략:
+ *  1) "이름 이름" 같은 2+ 단어 대문자 연속 — 인명·지명·사건명 (가장 정확)
+ *  2) dash(—/–/-) 앞까지 잘라낸 단축 문장
+ *  3) 원문 전체 앞 100자
+ */
+function searchQueriesFromTopic(topic) {
+  const t = String(topic || '');
+  const queries = [];
+
+  // 1) 연속하는 대문자 단어 쌍/트리플 추출 (인명·사건명)
+  const capRuns = [];
+  const capPattern = /\b([A-Z][a-z]{1,}(?:\s+[A-Z][a-z]{0,}){1,4})\b/g;
+  let m;
+  while ((m = capPattern.exec(t)) !== null) {
+    const phrase = m[1].trim();
+    // 문장 맨 앞 단어(The, In, A 등) 단독은 제외
+    if (phrase.split(' ').length >= 2 || /^[A-Z]{2,}$/.test(phrase)) {
+      if (!queries.includes(phrase)) queries.push(phrase);
+    }
+  }
+
+  // 2) dash 앞 단축 문장
+  const dashClipped = t.replace(/[—–].*$/s, '').replace(/\.$/, '').trim();
+  if (dashClipped.length >= 6 && !queries.includes(dashClipped)) {
+    queries.push(dashClipped.slice(0, 120));
+  }
+
+  // 3) 원문 앞 100자 (최후 fallback)
+  const raw100 = t.slice(0, 100).trim();
+  if (!queries.includes(raw100)) queries.push(raw100);
+
+  return queries.filter(Boolean);
+}
+
+async function opensearch(q, limit = 5) {
+  try {
+    const res = await api.get('https://en.wikipedia.org/w/api.php', {
+      params: { action: 'opensearch', search: q, limit, namespace: 0, format: 'json' },
+    });
+    const data = res.data;
+    if (Array.isArray(data) && data[1]?.length) {
+      return data[1].filter((t) => t && !isDisambiguation(t));
+    }
+  } catch (_) { /* ignore */ }
+  return [];
 }
 
 /**
@@ -41,57 +82,21 @@ function isDisambiguation(title) {
 async function fetchWikipediaContext(topic) {
   if (!isEnabled()) return null;
 
-  const q = searchQueryFromTopic(topic);
-  if (!q) return null;
+  const queries = searchQueriesFromTopic(topic);
 
-  let titles = [];
-  try {
-    const os = await api.get('https://en.wikipedia.org/w/api.php', {
-      params: {
-        action: 'opensearch',
-        search: q,
-        limit: 5,
-        namespace: 0,
-        format: 'json',
-      },
-    });
-    const data = os.data;
-    if (Array.isArray(data) && data[1] && data[1].length) {
-      titles = data[1].filter((t) => t && !isDisambiguation(t));
-    }
-  } catch (e) {
-    return null;
-  }
-
-  if (!titles.length) {
-    try {
-      const os2 = await api.get('https://en.wikipedia.org/w/api.php', {
-        params: {
-          action: 'opensearch',
-          search: String(topic).slice(0, 100),
-          limit: 3,
-          namespace: 0,
-          format: 'json',
-        },
-      });
-      const d2 = os2.data;
-      if (Array.isArray(d2) && d2[1] && d2[1].length) {
-        titles = d2[1].filter((t) => t && !isDisambiguation(t));
+  for (const q of queries) {
+    const titles = await opensearch(q);
+    for (const title of titles) {
+      const text = await fetchPlainExtract(title);
+      if (text && text.length > 80) {
+        const slug = title.replace(/ /g, '_');
+        console.log(`  [Wiki] 검색어: "${q}" → "${title}"`);
+        return {
+          title,
+          url: `https://en.wikipedia.org/wiki/${encodeURIComponent(slug)}`,
+          text: text.slice(0, MAX_EXTRACT_CHARS).trim(),
+        };
       }
-    } catch (_) {
-      /* ignore */
-    }
-  }
-
-  for (const title of titles) {
-    const text = await fetchPlainExtract(title);
-    if (text && text.length > 80) {
-      const slug = title.replace(/ /g, '_');
-      return {
-        title,
-        url: `https://en.wikipedia.org/wiki/${encodeURIComponent(slug)}`,
-        text: text.slice(0, MAX_EXTRACT_CHARS).trim(),
-      };
     }
   }
 

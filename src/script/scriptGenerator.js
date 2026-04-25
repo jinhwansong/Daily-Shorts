@@ -208,6 +208,7 @@ async function generateScript(topic, genreKey = DEFAULT_GENRE, options = {}) {
     throw new Error('generateScript() is for Shorts only; use generateLongformScript() for longform.');
   }
   const wiki = options.wikiContext && String(options.wikiContext).trim();
+  const hasWiki = !!wiki;
   const wikiBlock = wiki
     ? `
 
@@ -229,17 +230,25 @@ ${wiki}
 ${fact}
 `
     : '';
+
+  // wiki가 없을 때: 토픽 라인 자체가 환각일 수 있으므로 수치 사용 전면 금지
+  const noWikiWarning = !hasWiki
+    ? `
+
+⚠ NO VERIFIED SOURCE: No Wikipedia article was found for this topic. The topic line has NOT been independently verified — it may contain hallucinated years, names, or events. You MUST treat every specific number and year in the topic line as UNVERIFIED. DO NOT use any year, monetary amount, count, or superlative from the topic line in the script. Replace all specifics with vague phrasing (e.g. "decades ago", "at the turn of the century", "a large sum"). Only the person's name and the general type of mystery (disappearance, death, etc.) are safe to use.`
+    : '';
+
   const systemPrompt = loadPrompt(genreKey);
   const raw = await completeLlm({
     system: systemPrompt,
-    user: `Topic: ${topic}${wikiBlock}${factBlock}${scriptUserMessageAddon()}
+    user: `Topic: ${topic}${wikiBlock}${factBlock}${noWikiWarning}${scriptUserMessageAddon()}
 
 SOURCE DISCIPLINE — apply before writing a single word:
 Before writing the script, mentally note the specific years, names, and numbers that appear in the Wikipedia block and fact bullets above. You are ONLY allowed to use those exact values. If a year, name, or number is not visible in the sources above, do NOT write it — write vaguely instead (e.g. "decades later", "in the early twentieth century", "a significant sum") or omit it.
 
 BALANCED GROUNDING (read carefully):
 (1) Do **not** invent or imply facts, dates, or outcomes that are not in the Wikipedia and fact bullets above. No extra names, years, or "body found" if not allowed.
-(2) You **must** still sound like a real Short, not a hollow teaser: at least **two** concrete, allowed details in the first half—short declarative sentences, not only inside a final question. If KEY ANCHORS is present, weave those phrases in early. If there is no fact-bullet section, take two clear details from the Wikipedia block; if no Wikipedia, from the topic line only (no new numbers).
+(2) You **must** still sound like a real Short, not a hollow teaser: at least **two** concrete, allowed details in the first half—short declarative sentences, not only inside a final question. If KEY ANCHORS is present, weave those phrases in early. If there is no fact-bullet section and no Wikipedia, use only the person/case name and the general nature of the mystery — no specific numbers.
 (3) Do not write a script that is *only* vague atmosphere + one rhetorical question. The ending can ask an open question, but the middle should add **at least one more** allowed beat (documented paradox, reversal, or unknown—only if in the sources).
 (4) If sources are thin, anchor with the case/victim from the topic; keep sentences cold and fast; the closing question should point at a **documented** gap, not a made-up hook.
 (5) English only; respect the word limit for Shorts.`,

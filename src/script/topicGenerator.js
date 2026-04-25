@@ -28,6 +28,12 @@ function saveUsedTopics(genreKey, topics) {
 function mysteryUnresolvedTopicsAddon(genreKey) {
   if (genreKey !== 'mystery') return '';
   return `
+SOURCE DISCIPLINE (non-negotiable — apply BEFORE writing each topic):
+- Only write a topic if you are confident the CORE EVENT has a Wikipedia article or is documented in major English-language news archives (BBC, NYT, AP, etc.).
+- The specific event described must be real and documented, not a plausible-sounding composite or a known person paired with an invented incident. Example of what NOT to do: naming a real historical figure and inventing an event about them (e.g. "Colonel X's crew vanished from a sealed hangar" when no such event exists in sources).
+- If you are not certain a specific detail (year, name, outcome) is documented, omit that detail entirely — write the topic with fewer specifics rather than risk hallucination.
+- If you are unsure whether a case is real and documented, skip it entirely and choose a different case you are confident about.
+
 Unresolved cases only (non-negotiable):
 - Each topic must describe a real case that is still unresolved in reputable public sources: perpetrator not identified or not convicted for the crime, person still missing, or the core incident still lacks a widely accepted explanation.
 - Do NOT use cases that are clearly solved, closed, or fully explained (accepted conviction, missing person found with an established account, mystery debunked by mainstream investigation).
