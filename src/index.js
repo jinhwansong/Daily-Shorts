@@ -16,7 +16,7 @@ const {
   mustAppendFreesoundCredit,
   buildFreesoundAttributionLine,
 } = require('./audio/freesoundBgm');
-const { fetchBackgroundVideo, fetchTwoBackgroundVideos } = require('./video/videoFetcher');
+const { fetchBackgroundVideo, fetchNBackgroundVideos } = require('./video/videoFetcher');
 const { generateSubtitles, srtToAss } = require('./video/subtitleGenerator');
 const { composeVideo } = require('./video/videoComposer');
 const { composeLongformVideo } = require('./video/longformVideoComposer');
@@ -33,6 +33,7 @@ const { normalizeLevel } = require('./utils/contentIntensity');
 const { fetchWikipediaContext, isWikiContextEnabled } = require('./utils/wikipediaContext');
 const {
   isDualBackgroundOn,
+  getBackgroundSegmentCount,
   isKenBurnsOn,
   isAudioLoudnormOn,
 } = require('./utils/videoPipelineEnv');
@@ -80,19 +81,23 @@ async function runPipeline(topic, genreKey) {
     console.log(`  Thumbnail line: ${metadata.thumbnailLine}`);
   }
 
-  // TTS + 배경 영상 (병렬) — 듀얼 클립 시 전·후반 각각 다른 Pexels 파일
+  // TTS + 배경 영상 (병렬) — 듀얼이면 Pexels 세로 클립 N개(기본 4)를 균등 분할로 이어 붙임
   let videoPath2 = null;
+  let backgroundPaths = null;
   const [audioPath, videoPath] = await Promise.all([
     generateTTS(script, outputDir),
     (async () => {
       if (isDualBackgroundOn()) {
-        const pair = await fetchTwoBackgroundVideos(
+        const n = getBackgroundSegmentCount();
+        const paths = await fetchNBackgroundVideos(
           outputDir,
           genreKey,
-          metadata.thumbnailQuery || null
+          metadata.thumbnailQuery || null,
+          n
         );
-        videoPath2 = pair[1];
-        return pair[0];
+        backgroundPaths = paths;
+        if (paths.length >= 2) videoPath2 = paths[1];
+        return paths[0];
       }
       return fetchBackgroundVideo(outputDir, genreKey, metadata.thumbnailQuery || null);
     })(),
@@ -159,13 +164,19 @@ async function runPipeline(topic, genreKey) {
   const [finalPath, thumbnailPath] = await Promise.all([
     composeVideo(videoPath, audioPath, assPath, outputDir, {
       bgmPath,
-      backgroundPath2: videoPath2,
+      ...(backgroundPaths && backgroundPaths.length > 1
+        ? { backgroundPaths }
+        : videoPath2
+          ? { backgroundPath2: videoPath2 }
+          : {}),
     }),
     generateThumbnail(hookText, outputDir, genreKey, metadata.thumbnailQuery || null),
   ]);
 
   console.log(
-    `  FFmpeg: dual_bg=${isDualBackgroundOn()} ken_burns=${isKenBurnsOn()} loudnorm=${isAudioLoudnormOn()}`
+    `  FFmpeg: dual_bg=${isDualBackgroundOn()}${
+      isDualBackgroundOn() ? ` segments=${getBackgroundSegmentCount()}` : ''
+    } ken_burns=${isKenBurnsOn()} loudnorm=${isAudioLoudnormOn()}`
   );
 
   // 저작권 가드 (업로드 전 자동 검증)

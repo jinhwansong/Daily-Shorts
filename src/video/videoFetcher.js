@@ -94,9 +94,30 @@ function pickTwoDistinctIndices(n) {
   return [a, b];
 }
 
-/** 같은 검색으로 서로 다른 클립 2개 — 전·후반 컷용 */
-async function fetchTwoBackgroundVideos(outputDir, genreKey = DEFAULT_GENRE, queryOverride = null) {
-  const genre = getGenre(genreKey);
+/**
+ * 0..poolN-1에서 needN개 인덱스. needN>poolN이면 중복
+ */
+function pickManyIndices(poolN, needN) {
+  if (poolN <= 0) return Array.from({ length: needN }, () => 0);
+  if (needN <= 0) return [];
+  const n = Math.min(needN, 8);
+  if (n <= poolN) {
+    const arr = Array.from({ length: poolN }, (_, i) => i);
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = (Math.random() * (i + 1)) | 0;
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr.slice(0, n);
+  }
+  const base = pickManyIndices(poolN, poolN);
+  const out = [...base];
+  while (out.length < n) {
+    out.push(Math.floor(Math.random() * poolN));
+  }
+  return out;
+}
+
+async function pexelsSearchForGenre(genre, queryOverride) {
   const queries = genre.videoQueries;
   const trimmedOverride = queryOverride && String(queryOverride).trim();
   const searchQuery = trimmedOverride || queries[Math.floor(Math.random() * queries.length)];
@@ -104,7 +125,7 @@ async function fetchTwoBackgroundVideos(outputDir, genreKey = DEFAULT_GENRE, que
   const headers = { Authorization: process.env.PEXELS_API_KEY };
   const baseParams = {
     query: searchQuery,
-    per_page: 15,
+    per_page: 20,
     orientation: 'portrait',
   };
 
@@ -125,19 +146,35 @@ async function fetchTwoBackgroundVideos(outputDir, genreKey = DEFAULT_GENRE, que
   if (!videos || videos.length === 0) {
     throw new Error(`No videos found for query: ${searchQuery}`);
   }
+  return { videos, searchQuery };
+}
 
-  const poolN = Math.min(videos.length, 8);
-  const [i0, i1] = pickTwoDistinctIndices(poolN);
+/**
+ * 같은 검색으로 서로 다른 Pexels 세로 클립 N개(기본 4) — 길이에 맞게 짧은 구간씩 이어 붙음
+ * @param {number} n 2~8
+ * @returns {string[]} background_0.mp4 …
+ */
+async function fetchNBackgroundVideos(
+  outputDir,
+  genreKey = DEFAULT_GENRE,
+  queryOverride = null,
+  n = 4
+) {
+  const need = Math.max(2, Math.min(8, Math.floor(n) || 4));
+  const genre = getGenre(genreKey);
+  const { videos, searchQuery } = await pexelsSearchForGenre(genre, queryOverride);
+
+  const poolN = Math.min(videos.length, 20);
+  const indices = pickManyIndices(poolN, need);
   const paths = [];
 
-  for (let k = 0; k < 2; k++) {
-    const idx = k === 0 ? i0 : i1;
-    const video = videos[idx];
+  for (let k = 0; k < need; k++) {
+    const video = videos[indices[k]];
     const videoFile = pickBestVideoFile(video);
     if (!videoFile) {
       throw new Error(`No downloadable video file for query: ${searchQuery}`);
     }
-    const name = k === 0 ? 'background_a.mp4' : 'background_b.mp4';
+    const name = `background_${k}.mp4`;
     const videoPath = path.join(outputDir, name);
     const writer = fs.createWriteStream(videoPath);
     const dlResponse = await axios.get(videoFile.link, { responseType: 'stream' });
@@ -152,4 +189,9 @@ async function fetchTwoBackgroundVideos(outputDir, genreKey = DEFAULT_GENRE, que
   return paths;
 }
 
-module.exports = { fetchBackgroundVideo, fetchTwoBackgroundVideos };
+/** @deprecated 쓰는 곳은 fetchNBackgroundVideos(..., 2) */
+async function fetchTwoBackgroundVideos(outputDir, genreKey = DEFAULT_GENRE, queryOverride = null) {
+  return fetchNBackgroundVideos(outputDir, genreKey, queryOverride, 2);
+}
+
+module.exports = { fetchBackgroundVideo, fetchTwoBackgroundVideos, fetchNBackgroundVideos };

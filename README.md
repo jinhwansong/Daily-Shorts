@@ -131,7 +131,8 @@ YOUTUBE_REFRESH_TOKEN_MYSTERY=...
 > 5. `node scripts/getRefreshToken.js --channel=mystery` → 터미널 URL로 로그인 → `YOUTUBE_REFRESH_TOKEN_MYSTERY` 를 `.env`에 저장. 동의 화면이 *테스트*이면 [OAuth 동의 화면](https://console.cloud.google.com/apis/credentials/consent) → **테스트 사용자**에 본인 Gmail  
 >    
 > **Shorts 팩트 보조 (무료):** 토픽에 맞는 **영문 위키** API로 본문 일부를 가져와 스크립트에 붙임 (`SHORTS_WIKI_CONTEXT=1` 기본, 끄려면 `0`). API 키 없음, `User-Agent` 권장(`.env`의 `WIKIPEDIA_USER_AGENT`).  
-> **하이쿠 사실 불릿 1회(기본 켬):** 위키(또는 토픽만)에서 **불릿**만 먼저 뽑고, 본문 스크립트는 **위키+불릿에 없는 구체(연도·“첫 OOO”·시신·재판 횟수)** 를 쓰지 못하도록 프롬프트로 묶음. 하이쿠 호출 **+1** (`SHORTS_FACTS_STEP=0` 이 꺼짐)
+> **하이쿠 사실 불릿 1회(기본 켬):** 위키(또는 토픽만)에서 **불릿**만 먼저 뽑고, 본문 스크립트는 **위키+불릿에 없는 구체(연도·“첫 OOO”·시신·재판 횟수)** 를 쓰지 못하도록 프롬프트로 묶음. 하이쿠 호출 **+1** (`SHORTS_FACTS_STEP=0` 이 꺼짐)  
+> **Pexels 배경:** `VIDEO_DUAL_BACKGROUND=1` 이면 세로 **클립 N개(기본 4, 2~8)** 를 다운로드해, TTS+패딩 길이에 맞게 **N등분**해 이어 붙임. 개수는 `VIDEO_BACKGROUND_SEGMENTS` — 스크립트가 짧ㆍ길어져도 총 길이에 맞춰 **구간만** 달라짐
 
 ### 2. 로컬 실행
 

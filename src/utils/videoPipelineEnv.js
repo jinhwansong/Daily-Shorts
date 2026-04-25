@@ -23,6 +23,15 @@ function isDualBackgroundOn() {
   return isTruthyEnv('VIDEO_DUAL_BACKGROUND', VIDEO.DUAL_BACKGROUND);
 }
 
+/** 듀얼(여러 Pexels 클립) 켤 때 이어 붙일 세그먼트 수. 단일 클립은 항상 1. 2~8, 기본 4. */
+function getBackgroundSegmentCount() {
+  if (!isDualBackgroundOn()) return 1;
+  const raw = (process.env.VIDEO_BACKGROUND_SEGMENTS || '4').toString().trim();
+  const n = parseInt(raw, 10);
+  const c = Number.isFinite(n) ? n : 4;
+  return Math.max(2, Math.min(8, c));
+}
+
 /** zoompan 프레임당 zoom 증가 (작을수록 미세) */
 function kenBurnsZoomInc() {
   const n = parseFloat(process.env.VIDEO_KEN_ZOOM_INC || '0.00007');
@@ -53,6 +62,7 @@ module.exports = {
   isAudioLoudnormOn,
   isKenBurnsOn,
   isDualBackgroundOn,
+  getBackgroundSegmentCount,
   kenBurnsZoomInc,
   kenBurnsMaxZoom,
   loudnormI,

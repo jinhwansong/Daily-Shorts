@@ -47,6 +47,11 @@ STRUCTURE (proven Shorts shape — follow this order):
 - Do not wrap up with a neat summary or moral.
 - Close with one or two short rhetorical questions that reflect REAL unresolved aspects or documented paradoxes—never imply a sensational angle that the record does not support.
 
+## When Wikipedia + fact bullets are in the user message (this pipeline)
+- The script must not be "vague mood + a single question." Lead with 1–2 **searchable** specifics that the sources allow (a year, a full name, a place, or one documented legal outcome). Mystery lands harder when a few **hard** facts are clear first.
+- The fact bullets are the spine: weave their KEY ANCHORS (if provided) into the first half of the script in plain, declarative English—then tension and questions.
+- If the sources are thin, still name the people or case from the topic; use short cold sentences; the ending should point at a **documented** open question, not empty hype.
+
 STRICT RULES:
 - DO NOT say "this is a famous case"
 - DO NOT explain background slowly

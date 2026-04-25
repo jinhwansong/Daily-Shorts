@@ -118,10 +118,29 @@ function kenBurnsSegment(inLabel, outLabel) {
   return `${inLabel}zoompan=z='min(zoom+${inc},${maxZ})':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${OUTPUT_WIDTH}x${OUTPUT_HEIGHT}:fps=30${outLabel}`;
 }
 
-function buildVideoFilterGraph(assPathEscaped, TD, dual) {
-  const sub = buildSubtitlesFilter(assPathEscaped);
+/** TTS+패딩 총 길이(TD)를 n등분 (끝 구간이 부동소수 누적 오차를 흡수) */
+function splitEqualDurationsStr(TD, n) {
+  const t = parseFloat(TD, 10);
+  if (n <= 1) return [String(TD)];
+  if (n <= 0) return [String(TD)];
+  const d = t / n;
+  const out = [];
+  let sum = 0;
+  for (let i = 0; i < n - 1; i++) {
+    const s = d;
+    out.push(s.toFixed(3));
+    sum += s;
+  }
+  out.push((t - sum).toFixed(3));
+  return out;
+}
 
-  if (!dual) {
+/**
+ * nSeg: 배경 클립 개수(1=단일, 2+=concat 후 자막)
+ */
+function buildVideoFilterGraph(assPathEscaped, TD, nSeg) {
+  const sub = buildSubtitlesFilter(assPathEscaped);
+  if (nSeg <= 1) {
     const base = scaleTrimColorInput('[0:v]', TD, '[vbase]');
     return [
       `${base};`,
@@ -130,13 +149,17 @@ function buildVideoFilterGraph(assPathEscaped, TD, dual) {
     ].join('');
   }
 
-  const half = (parseFloat(TD) / 2).toFixed(3);
-  const a = scaleTrimColorInput('[0:v]', half, '[v1]');
-  const b = scaleTrimColorInput('[1:v]', half, '[v2]');
+  const durs = splitEqualDurationsStr(TD, nSeg);
+  const segs = [];
+  for (let i = 0; i < nSeg; i++) {
+    segs.push(scaleTrimColorInput(`[${i}:v]`, durs[i], `[vpre${i}]`));
+  }
+  const concatIn = durs
+    .map((_, i) => `[vpre${i}]`)
+    .join('');
   return [
-    `${a};`,
-    `${b};`,
-    `[v1][v2]concat=n=2:v=1:a=0[vcat];`,
+    segs.join(';') + `;`,
+    `${concatIn}concat=n=${nSeg}:v=1:a=0[vcat];`,
     `${kenBurnsSegment('[vcat]', '[vkb]')};`,
     `[vkb]${sub}[burned]`,
   ].join('');
@@ -162,16 +185,12 @@ function buildVoiceOnlyAudioChain(audioInputLabel, TD) {
  * @param {string} audioPath
  * @param {string} assPath
  * @param {string} outputDir
- * @param {{ bgmPath?: string | null, backgroundPath2?: string | null }} [options]
+ * @param {{ bgmPath?: string | null, backgroundPath2?: string | null, backgroundPaths?: string[] | null }} [options]
  */
 async function composeVideo(backgroundPath, audioPath, assPath, outputDir, options = {}) {
-  const { bgmPath: bgmPathOpt, backgroundPath2 } = options;
+  const { bgmPath: bgmPathOpt, backgroundPath2, backgroundPaths: bgPathsIn } = options;
   const bgmPath =
     bgmPathOpt && fs.existsSync(path.resolve(bgmPathOpt)) ? path.resolve(bgmPathOpt) : null;
-
-  const dual =
-    !!(backgroundPath2 && fs.existsSync(path.resolve(backgroundPath2))) &&
-    path.resolve(backgroundPath) !== path.resolve(backgroundPath2);
 
   const duration = await getAudioDuration(audioPath);
   const totalDuration = duration + 1.5;
@@ -182,25 +201,42 @@ async function composeVideo(backgroundPath, audioPath, assPath, outputDir, optio
   fs.copyFileSync(assPath, tmpAss);
   const subPath = escapeSubtitlesPath(tmpAss);
 
-  const bgResolved = path.resolve(backgroundPath);
-  const bg2Resolved = dual ? path.resolve(backgroundPath2) : null;
   const audioResolved = path.resolve(audioPath);
 
+  let bgList;
+  if (Array.isArray(bgPathsIn) && bgPathsIn.length > 0) {
+    bgList = bgPathsIn.map((p) => path.resolve(p)).filter((p) => fs.existsSync(p));
+  } else if (
+    backgroundPath2 &&
+    fs.existsSync(path.resolve(backgroundPath2)) &&
+    path.resolve(backgroundPath) !== path.resolve(backgroundPath2)
+  ) {
+    bgList = [path.resolve(backgroundPath), path.resolve(backgroundPath2)];
+  } else {
+    bgList = [path.resolve(backgroundPath)];
+  }
+  if (bgList.length < 1) {
+    throw new Error('No background video file for composeVideo');
+  }
+  const nSeg = bgList.length;
   const vol = bgmVolume();
   const bgmVol = vol.toFixed(3);
 
   const crf = String(videoCrf());
   const preset = videoPreset();
 
-  const vFilter = buildVideoFilterGraph(subPath, TD, dual);
+  const vFilter = buildVideoFilterGraph(subPath, TD, nSeg);
+
+  const voiceIn = String(nSeg);
+  const bgmIn = String(nSeg + 1);
 
   let args;
   let filterComplex;
 
   if (bgmPath) {
     const bgmResolved = bgmPath;
-    const ai = dual ? '2' : '1';
-    const bi = dual ? '3' : '2';
+    const ai = voiceIn;
+    const bi = bgmIn;
 
     const mixToOut = isAudioLoudnormOn()
       ? [
@@ -217,9 +253,9 @@ async function composeVideo(backgroundPath, audioPath, assPath, outputDir, optio
       mixToOut,
     ].join('');
 
-    args = ['-hide_banner', '-y', '-stream_loop', '-1', '-i', bgResolved];
-    if (dual) {
-      args.push('-stream_loop', '-1', '-i', bg2Resolved);
+    args = ['-hide_banner', '-y'];
+    for (const p of bgList) {
+      args.push('-stream_loop', '-1', '-i', p);
     }
     args.push(
       '-i',
@@ -251,13 +287,12 @@ async function composeVideo(backgroundPath, audioPath, assPath, outputDir, optio
       outputPath
     );
   } else {
-    const ai = dual ? '2' : '1';
-    const audioLabel = `[${ai}:a]`;
+    const audioLabel = `[${voiceIn}:a]`;
     filterComplex = [vFilter, ';', buildVoiceOnlyAudioChain(audioLabel, TD)].join('');
 
-    args = ['-hide_banner', '-y', '-stream_loop', '-1', '-i', bgResolved];
-    if (dual) {
-      args.push('-stream_loop', '-1', '-i', bg2Resolved);
+    args = ['-hide_banner', '-y'];
+    for (const p of bgList) {
+      args.push('-stream_loop', '-1', '-i', p);
     }
     args.push(
       '-i',

@@ -41,7 +41,7 @@ async function generateShortsFactBullets(topic, wikiText, genreKey = DEFAULT_GEN
       : 'No English Wikipedia article was retrieved. You MUST NOT invent years, ages, "first to", trial counts, body recovery, or locations. Use only the topic line; say what is not known rather than guess.';
 
   const raw = await completeLlm({
-    maxTokens: 520,
+    maxTokens: 560,
     user: `You are a fact-list assistant for a US ${genre.label} YouTube Short. No narrative, no story voice, no closing question.
 
 ## Topic
@@ -51,10 +51,14 @@ ${topic}
 ${wikiBlock}
 
 ## Your output
-- 5–12 lines in English. Each line starts with "• " and states ONE checkable fact (a name, a year, a place, a documented outcome, or one explicit "do not say X" if the sources contradict a common myth).
-- If the Wikipedia text is present: every year, name, legal outcome, and whether remains were found must come from that text. If a year is not in the text, do not add years to the bullets. If the text says a body was never found, add a bullet that forbids claiming remains were found or discovered in a place.
-- If there is no Wikipedia: do not invent numbers or court details; 3–4 bullets that restate only the topic in neutral tone, and bullets that list what is unknown.
-- No speculation, no "probably", no rhetorical questions.`,
+- First: 5–12 lines in English. Each line starts with "• " and states ONE checkable fact (a name, a year, a place, a documented outcome, or "do not say X" if the sources contradict a common myth).
+- If Wikipedia is present: every year, name, legal outcome, and whether remains were found must come from that text. If a year is not in the text, do not add years. If a body was never found, add a bullet that forbids claiming remains were found.
+- If there is no Wikipedia: do not invent numbers or court details; 3–5 bullets from the topic line only, plus what is unknown.
+- No speculation, no "probably" in the bullets.
+- **After the bullets**, add EXACTLY these two lines (not bullet lines):
+  KEY ANCHORS: <comma-separated, max 3 short phrases; each must already appear in the bullet lines above—names, year, or place the script must state clearly in plain English>
+  AVOID: <one short line: wrong claims to block, e.g. wrong decade, "body found" if not in source; or "keep vague on dates" if year absent in sources>
+`,
   });
   return raw.trim();
 }
@@ -99,8 +103,10 @@ ${wiki}
   const factBlock = fact
     ? `
 
-## Fact bullets (HARD; haiku pre-pass)
-The script’s specific claims (years, ages, "first" superlatives, physical evidence, body disposal, number of trials, place names) must be **supported by these bullets and the Wikipedia text above**—nothing else. If a hook line would add a new concrete fact, change the hook. If a bullet says "do not say X", treat X as forbidden in the whole script.
+## Fact bullets (HARD) + KEY ANCHORS / AVOID
+- Every **specific** claim in the script (dates, names, legal outcomes, body/remains, trial counts, "first" superlatives) must match what is allowed in the Wikipedia block and/or the bullet lines. If a line says "do not say X", never say X.
+- The **KEY ANCHORS** line lists phrases you must work into the **first half** of the script in clear, plain sentences (not all hidden inside questions). That gives viewers something searchable before the unknown lands.
+- Follow **AVOID** literally.
 
 ${fact}
 `
@@ -110,8 +116,13 @@ ${fact}
     system: systemPrompt,
     user: `Topic: ${topic}${wikiBlock}${factBlock}${scriptUserMessageAddon()}
 
-STRICT: Do not add concrete facts (numbers, dates, names, outcomes, "first" claims, remains/body details) that are not in the Wikipedia and/or fact-bullet sections above. Prefer tension and open questions that **do not assert** missing facts. If uncertain, stay vague. English only, Shorts length.`,
-    maxTokens: 260,
+BALANCED GROUNDING (read carefully):
+(1) Do **not** invent or imply facts, dates, or outcomes that are not in the Wikipedia and fact bullets above. No extra names, years, or "body found" if not allowed.
+(2) You **must** still sound like a real Short, not a hollow teaser: at least **two** concrete, allowed details in the first half—short declarative sentences, not only inside a final question. If KEY ANCHORS is present, weave those phrases in early. If there is no fact-bullet section, take two clear details from the Wikipedia block; if no Wikipedia, from the topic line only (no new numbers).
+(3) Do not write a script that is *only* vague atmosphere + one rhetorical question. The ending can ask an open question, but the middle should add **at least one more** allowed beat (documented paradox, reversal, or unknown—only if in the sources).
+(4) If sources are thin, anchor with the case/victim from the topic; keep sentences cold and fast; the closing question should point at a **documented** gap, not a made-up hook.
+(5) English only; respect the word limit for Shorts.`,
+    maxTokens: 280,
   });
   const wcBefore = raw.split(/\s+/).filter(Boolean).length;
   const clamped = clampShortsScript(raw, SHORTS_MAX_WORDS);

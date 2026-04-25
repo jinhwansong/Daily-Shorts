@@ -23,10 +23,22 @@ function runCopyrightGuard(outputDir, { videoPath, videoPath2, audioPath, thumbn
     videoPath2 &&
     fs.existsSync(videoPath2) &&
     path.basename(videoPath2) === 'background_b.mp4';
-  const bgOkSingle   = bgExists && bn === 'background.mp4';
-  const bgOkDual     = bgExists && bn === 'background_a.mp4' && b2Ok;
+  const idxFiles = fs.existsSync(outputDir)
+    ? fs
+        .readdirSync(outputDir)
+        .filter((f) => /^background_\d+\.mp4$/.test(f))
+        .map((f) => parseInt(f.match(/(\d+)/)[1], 10))
+        .sort((a, b) => a - b)
+    : [];
+  const contigIdx =
+    idxFiles.length >= 2 &&
+    idxFiles[0] === 0 &&
+    idxFiles.every((v, i) => v === i);
+  const bgOkSingle = bgExists && bn === 'background.mp4';
+  const bgOkDual = bgExists && bn === 'background_a.mp4' && b2Ok;
+  const bgOkMulti = bgExists && bn === 'background_0.mp4' && contigIdx;
   const bgOkLongform = bgExists && /^bg_landscape_\d+\.mp4$/.test(bn); // 롱폼 클립
-  const bgOk = bgOkSingle || bgOkDual || bgOkLongform;
+  const bgOk = bgOkSingle || bgOkDual || bgOkMulti || bgOkLongform;
   check(
     'Pexels CC0 배경 영상',
     bgOk,
