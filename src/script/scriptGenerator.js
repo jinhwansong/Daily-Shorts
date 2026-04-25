@@ -1,13 +1,7 @@
-const Anthropic = require('@anthropic-ai/sdk');
 const fs = require('fs');
 const { getGenre, DEFAULT_GENRE } = require('../genres');
 const { scriptUserMessageAddon, metadataPromptAddon } = require('../utils/contentIntensity');
-
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-// 숏폼 스크립트·메타: 빠른 Haiku 사용
-const MODEL = process.env.CLAUDE_MODEL || 'claude-haiku-4-5-20251001';
-// 롱폼 스크립트: 2-step grounding으로 Haiku도 사실성 개선. Sonnet 원하면 CLAUDE_LONGFORM_MODEL=claude-sonnet-4-5-20251001
-const LONGFORM_SCRIPT_MODEL = process.env.CLAUDE_LONGFORM_MODEL || process.env.CLAUDE_MODEL || 'claude-haiku-4-5-20251001';
+const { completeLlm, completeLlmLongform } = require('./scriptLlm');
 
 /** 쇼츠 TTS 길이 상한(단어). mystery 등 숏폼만 적용 — env SHORTS_MAX_WORDS 로 조정 가능 */
 const SHORTS_MAX_WORDS = Math.max(
@@ -52,20 +46,29 @@ function clampShortsScript(text, maxWords = SHORTS_MAX_WORDS) {
   return head;
 }
 
-async function generateScript(topic, genreKey = DEFAULT_GENRE) {
+async function generateScript(topic, genreKey = DEFAULT_GENRE, options = {}) {
   const genre = getGenre(genreKey);
   if (genre.format === 'longform') {
     throw new Error('generateScript() is for Shorts only; use generateLongformScript() for longform.');
   }
+  const wiki = options.wikiContext && String(options.wikiContext).trim();
+  const wikiBlock = wiki
+    ? `
+
+## English Wikipedia (grounding)
+Use this for concrete facts (names, years, places, legal outcomes) when it matches the topic. It may be incomplete or occasionally wrong. **Do not invent** dates, names, or verdicts that are not here or in the next instructions; if a detail is missing, omit it or use vague phrasing.
+
+${wiki}
+`
+    : '';
   const systemPrompt = loadPrompt(genreKey);
-  const message = await client.messages.create({
-    model: MODEL,
-    // 숏폼은 90단어 전후면 충분 — 400이면 150~250단어까지 나와 1분+ TTS 가능
-    max_tokens: 260,
+  const raw = await completeLlm({
     system: systemPrompt,
-    messages: [{ role: 'user', content: `Topic: ${topic}${scriptUserMessageAddon()}` }],
+    user: `Topic: ${topic}${wikiBlock}${scriptUserMessageAddon()}
+
+Fact-check: Only state details supported by the Wikipedia block above (when present) and widely known public records. Do not invent facts or contradict established records; if uncertain, omit or speak in general terms.`,
+    maxTokens: 260,
   });
-  const raw = message.content[0].text.trim();
   const wcBefore = raw.split(/\s+/).filter(Boolean).length;
   const clamped = clampShortsScript(raw, SHORTS_MAX_WORDS);
   const wcAfter = clamped.split(/\s+/).filter(Boolean).length;
@@ -79,13 +82,9 @@ async function generateScript(topic, genreKey = DEFAULT_GENRE) {
 
 async function generateMetadata(script, topic, genreKey = DEFAULT_GENRE) {
   const genre = getGenre(genreKey);
-  const message = await client.messages.create({
-    model: MODEL,
-    max_tokens: 420,
-    messages: [
-      {
-        role: 'user',
-        content: `Based on this YouTube Shorts script (genre: ${genre.label}), generate:
+  const raw = await completeLlm({
+    maxTokens: 420,
+    user: `Based on this YouTube Shorts script (genre: ${genre.label}), generate:
 1. YouTube title — US mystery/true-crime Shorts, SHORT and high-arousal: curiosity, dread, "how is this possible?" energy (aim ${SHORTS_TITLE_SOFT_MAX} characters or less; never exceed ${YOUTUBE_TITLE_MAX} characters including spaces). Not a long documentary sentence; not a copy-paste of the topic line.
 2. Thumbnail on-image line (THUMBNAIL_LINE) — the *second beat* of the hook: a phrase that *pairs with* the title (completes the thought, adds the twist, or names the shock detail). It must feel like a continuation of the title, not a separate brand tag. Max ${THUMBNAIL_ONIMAGE_MAX} characters. Still no slurs; no false claims about real people beyond what the script implies. NEVER include a channel name, "subscribe", "Shorts", or any branding.
 3. A short description (2-3 sentences, NO spoilers, build curiosity only)
@@ -127,11 +126,8 @@ THUMBNAIL_LINE: <thumbnail headline only>
 DESCRIPTION: <description>
 TAGS: <tag1>,<tag2>,...
 THUMBNAIL: <pexels search query>${metadataPromptAddon()}`,
-      },
-    ],
   });
 
-  const raw = message.content[0].text.trim();
   const titleMatch = raw.match(/^TITLE:\s*([^\n]+)/m);
   const thumbLineMatch = raw.match(/^THUMBNAIL_LINE:\s*([^\n]+)/m);
   const descMatch = raw.match(/DESCRIPTION:\s*([\s\S]+?)(?=TAGS:|$)/);
@@ -173,13 +169,9 @@ async function generateLongformScript(topic, genreKey = DEFAULT_GENRE) {
   const systemPrompt = loadPrompt(genreKey);
 
   // --- 1단계: 사실 추출 ---
-  const factsMsg = await client.messages.create({
-    model: LONGFORM_SCRIPT_MODEL,
-    max_tokens: 600,
-    messages: [
-      {
-        role: 'user',
-        content: `You are a documentary researcher. List ONLY verified, publicly documented facts about this topic.
+  const facts = await completeLlmLongform({
+    maxTokens: 600,
+    user: `You are a documentary researcher. List ONLY verified, publicly documented facts about this topic.
 
 Topic: ${topic}
 
@@ -189,42 +181,26 @@ Rules:
 - No speculation, no theory, no invented detail
 - Use exact years, names, and figures only when you are certain
 - Format: one bullet per line starting with "• "`,
-      },
-    ],
   });
 
-  const facts = factsMsg.content[0].text.trim();
-
   // --- 2단계: 스크립트 작성 (추출된 사실만 허용) ---
-  const scriptMsg = await client.messages.create({
-    model: LONGFORM_SCRIPT_MODEL,
-    max_tokens: 2200,
+  return completeLlmLongform({
     system: systemPrompt,
-    messages: [
-      {
-        role: 'user',
-        content: `Topic: ${topic}
+    maxTokens: 2200,
+    user: `Topic: ${topic}
 
 VERIFIED FACTS (use ONLY these — do not add any detail not in this list):
 ${facts}
 
 Write the script now. Every specific claim (date, name, location, number, official finding) must be traceable to one of the bullet points above. If the facts list does not contain a specific detail, describe that aspect in general terms or omit it.`,
-      },
-    ],
   });
-
-  return scriptMsg.content[0].text.trim();
 }
 
 async function generateLongformMetadata(script, topic, genreKey = DEFAULT_GENRE, chapters = []) {
   const genre = getGenre(genreKey);
-  const message = await client.messages.create({
-    model: MODEL,
-    max_tokens: 500,
-    messages: [
-      {
-        role: 'user',
-        content: `Based on this YouTube longform mystery documentary script, generate metadata.
+  const raw = await completeLlmLongform({
+    maxTokens: 500,
+    user: `Based on this YouTube longform mystery documentary script, generate metadata.
 
 Topic: ${topic}
 Script (first 600 chars): ${script.slice(0, 600)}
@@ -252,11 +228,7 @@ DESCRIPTION: <description>
 TAGS: <tag1>,<tag2>,...
 THUMBNAIL: <pexels query>
 THUMBNAIL_HOOK: <short hook line>`,
-      },
-    ],
   });
-
-  const raw = message.content[0].text.trim();
   const titleMatch = raw.match(/^TITLE:\s*([^\n]+)/m);
   const descMatch = raw.match(/DESCRIPTION:\s*([\s\S]+?)(?=TAGS:|$)/);
   const tagsMatch = raw.match(/TAGS:\s*(.+)/);

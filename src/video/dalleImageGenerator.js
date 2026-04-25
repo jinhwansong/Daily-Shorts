@@ -3,8 +3,12 @@ const Anthropic = require('@anthropic-ai/sdk');
 const fs = require('fs');
 const path = require('path');
 
-// .env에 GOOGLE_AI_API_KEY가 있어야 합니다.
-const ai = new GoogleGenAI({ apiKey: process.env.GOOGLE_AI_API_KEY });
+// 롱폼 이미지 생성 시에만 lazy 초기화 — Shorts 런에서 GOOGLE_AI_API_KEY 없을 때 SDK 경고 방지
+let _gemini;
+function getGemini() {
+  if (!_gemini) _gemini = new GoogleGenAI({ apiKey: process.env.GOOGLE_AI_API_KEY });
+  return _gemini;
+}
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 const CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-haiku-4-5-20251001';
@@ -151,7 +155,7 @@ async function generateImagesForScript(script, outputDir, imagesPerSection = 2) 
       tasks.slice(start, start + CONCURRENCY).map(async ({ section, i }, offset) => {
         const idx = start + offset;
         try {
-          const response = await ai.models.generateContent({
+          const response = await getGemini().models.generateContent({
             model: 'gemini-3.1-flash-image-preview',
             contents: prompts[idx],
             config: {

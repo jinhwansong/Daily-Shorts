@@ -59,6 +59,20 @@ function buildDescription(description, tags) {
 /** YouTube snippet.title max length */
 const YOUTUBE_TITLE_MAX = 100;
 
+const OAUTH_RETRY_DOC = 'md/youtube-oauth-invalid-grant.md';
+
+function rethrowIfYouTubeOAuthFailed(err, step) {
+  const m = err?.message || String(err);
+  if (/invalid_grant/i.test(m)) {
+    throw new Error(
+      `YouTube OAuth invalid_grant during ${step}: Google rejected the refresh token (expired, revoked, or wrong client). ` +
+        `Use the same YOUTUBE_CLIENT_ID/SECRET as when the token was issued and run: node scripts/getRefreshToken.js --channel=mystery. ` +
+        `Update YOUTUBE_REFRESH_TOKEN_MYSTERY in .env (and CI secrets if applicable). See ${OAUTH_RETRY_DOC}. Original: ${m}`
+    );
+  }
+  throw err;
+}
+
 async function uploadVideo(videoPath, { title, description, tags }, genreKey = 'mystery') {
   const youtube = getYouTubeClient(genreKey);
   const fullDescription = buildDescription(description, tags);
@@ -67,23 +81,28 @@ async function uploadVideo(videoPath, { title, description, tags }, genreKey = '
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, YOUTUBE_TITLE_MAX) || 'Video';
-  const response = await youtube.videos.insert({
-    part: ['snippet', 'status'],
-    requestBody: {
-      snippet: {
-        title: safeTitle,
-        description: fullDescription,
-        tags: [...new Set([...tags, 'shorts'])],
-        categoryId: '22',
-        defaultLanguage: 'en',
+  let response;
+  try {
+    response = await youtube.videos.insert({
+      part: ['snippet', 'status'],
+      requestBody: {
+        snippet: {
+          title: safeTitle,
+          description: fullDescription,
+          tags: [...new Set([...tags, 'shorts'])],
+          categoryId: '22',
+          defaultLanguage: 'en',
+        },
+        status: {
+          privacyStatus,
+          selfDeclaredMadeForKids: false,
+        },
       },
-      status: {
-        privacyStatus,
-        selfDeclaredMadeForKids: false,
-      },
-    },
-    media: { body: fs.createReadStream(videoPath) },
-  });
+      media: { body: fs.createReadStream(videoPath) },
+    });
+  } catch (err) {
+    rethrowIfYouTubeOAuthFailed(err, 'video upload');
+  }
   const videoId = response.data.id;
   console.log(
     `[YouTube] 업로드 완료 (${privacyStatus}) — 스튜디오에서 저작권·제한 안내·설명란(스크립트) 확인 후 공개하세요.`
@@ -119,6 +138,9 @@ async function setThumbnail(videoId, thumbnailPath, genreKey = 'mystery') {
     } catch (err) {
       lastErr = err;
       const msg = err.message || String(err);
+      if (/invalid_grant/i.test(msg)) {
+        rethrowIfYouTubeOAuthFailed(err, 'thumbnail upload');
+      }
       console.warn(`[YouTube] 썸네일 시도 ${attempt}/${maxAttempts} 실패: ${msg}`);
       if (attempt < maxAttempts) await sleep(5000);
     }

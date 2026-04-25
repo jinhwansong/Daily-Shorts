@@ -126,8 +126,11 @@ YOUTUBE_REFRESH_TOKEN_MYSTERY=...
 > **YouTube OAuth 발급 순서**  
 > 1. [Google Cloud Console](https://console.cloud.google.com) → 프로젝트 생성  
 > 2. YouTube Data API v3 사용 설정  
-> 3. OAuth 2.0 클라이언트 ID/Secret 생성 (데스크톱 앱 유형)  
-> 4. `node scripts/getRefreshToken.js --channel=mystery` 로 refresh token 발급 → `.env`에 `YOUTUBE_REFRESH_TOKEN_MYSTERY` 저장
+> 3. OAuth 2.0 클라이언트: **`getRefreshToken`에는 리디렉션이 필요**함. 콘솔에서 **「데스크톱 앱」** 클라이언트엔 **승인된 리디렉션 URI** 칸이 **안 보이는 경우**가 있음(정상) → 이 경우 **같은 프로젝트**에서 유형 **「웹 애플리케이션」** 클라이언트를 하나 더 만들고, 그쪽 **승인된 리디렉션 URI**에 `http://127.0.0.1:8765/` 를 넣는다(끝 `/` 포함)  
+> 4. `.env`의 `YOUTUBE_CLIENT_ID` / `YOUTUBE_CLIENT_SECRET`은 **위 3에서 리디렉션을 넣은 그 클라이언트(보통 웹 앱)**의 ID/Secret로 맞춘다  
+> 5. `node scripts/getRefreshToken.js --channel=mystery` → 터미널 URL로 로그인 → `YOUTUBE_REFRESH_TOKEN_MYSTERY` 를 `.env`에 저장. 동의 화면이 *테스트*이면 [OAuth 동의 화면](https://console.cloud.google.com/apis/credentials/consent) → **테스트 사용자**에 본인 Gmail  
+>    
+> **Shorts 팩트 보조 (무료):** 토픽에 맞는 **영문 위키** API로 본문 일부를 가져와 스크립트 프롬프트에 붙임 (`SHORTS_WIKI_CONTEXT=1` 기본, 끄려면 `0`). API 키 없음, `User-Agent` 권장(`.env`의 `WIKIPEDIA_USER_AGENT`). 사건이 마이너·문서가 짧으면(또는 없으면) 효과는 작음
 
 ### 2. 로컬 실행
 

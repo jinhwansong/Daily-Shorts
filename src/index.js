@@ -25,6 +25,7 @@ const { getAttributionFooter } = require('./utils/attributionFooter');
 const { pickRandomLocalBgm, listMp3InDir } = require('./utils/localBgm');
 const { runDryRunPipeline } = require('./utils/dryRunPipeline');
 const { normalizeLevel } = require('./utils/contentIntensity');
+const { fetchWikipediaContext, isWikiContextEnabled } = require('./utils/wikipediaContext');
 const {
   isDualBackgroundOn,
   isKenBurnsOn,
@@ -42,8 +43,23 @@ async function runPipeline(topic, genreKey) {
 
   console.log(`\n[${genre.label}] Topic: ${topic}`);
 
+  let wikiOptions = {};
+  if (isWikiContextEnabled()) {
+    const wiki = await fetchWikipediaContext(topic);
+    if (wiki) {
+      console.log(`  [Wiki] ${wiki.title} — ${wiki.url}`);
+      fs.writeFileSync(
+        path.join(outputDir, 'wikipedia_context.txt'),
+        `${wiki.title}\n${wiki.url}\n\n${wiki.text}`
+      );
+    } else {
+      console.log('  [Wiki] (no en.wikipedia article to ground — script without extract)');
+    }
+    wikiOptions = { wikiContext: wiki ? wiki.text : undefined };
+  }
+
   // 스크립트 + 메타데이터
-  const script = await generateScript(topic, genreKey);
+  const script = await generateScript(topic, genreKey, wikiOptions);
   const metadata = await generateMetadata(script, topic, genreKey);
   fs.writeFileSync(path.join(outputDir, 'script.txt'), script);
   fs.writeFileSync(path.join(outputDir, 'metadata.json'), JSON.stringify(metadata, null, 2));

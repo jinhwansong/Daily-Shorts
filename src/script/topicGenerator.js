@@ -1,11 +1,8 @@
-const Anthropic = require('@anthropic-ai/sdk');
 const fs = require('fs');
 const path = require('path');
 const { getGenre, DEFAULT_GENRE } = require('../genres');
 const { topicPromptAddon } = require('../utils/contentIntensity');
-
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-const MODEL = process.env.CLAUDE_MODEL || 'claude-haiku-4-5-20251001';
+const { completeLlm } = require('./scriptLlm');
 
 function usedTopicsFile(genreKey) {
   return path.join(__dirname, `../../output/used_topics_${genreKey}.json`);
@@ -49,24 +46,16 @@ async function generateTopics(count = 1, genreKey = DEFAULT_GENRE) {
 
   const instruction = genre.topicInstruction.replace('{count}', count);
 
-  const message = await client.messages.create({
-    model: MODEL,
-    max_tokens: 600,
-    messages: [
-      {
-        role: 'user',
-        content: `${instruction}
+  const raw = await completeLlm({
+    maxTokens: 600,
+    user: `${instruction}
 ${mysteryUnresolvedTopicsAddon(genreKey)}${topicPromptAddon()}${avoidContext}
 Rules:
 - Each topic must be distinct in setting, theme, and tone
 - Write each as one punchy sentence (max 20 words)
 - No numbering, no bullets, no explanation
 - One topic per line, exactly ${count} lines`,
-      },
-    ],
   });
-
-  const raw = message.content[0].text.trim();
   const topics = raw
     .split('\n')
     .map((line) => line.replace(/^\d+[\.\)]\s*/, '').trim())
