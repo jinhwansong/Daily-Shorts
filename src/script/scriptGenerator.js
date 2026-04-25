@@ -64,6 +64,73 @@ ${wikiBlock}
 }
 
 /**
+ * 스크립트에서 4자리 연도(1500-2029) 집합을 추출 (빠른 사전 검사용)
+ */
+function extractYears(text) {
+  return new Set((String(text || '')).match(/\b(1[5-9]\d{2}|20[012]\d)\b/g) || []);
+}
+
+/**
+ * 소스(위키+불릿)를 기준으로 스크립트의 구체적 주장을 검증·수정.
+ *
+ * 동작:
+ *  1) 소스가 없으면 즉시 원문 반환 (비용 0)
+ *  2) 연도만 있고 모두 소스에 있으면 검증 패스를 건너뛰는 빠른 경로 없음
+ *     — 연도 외 다른 사실도 틀릴 수 있으므로 소스가 있으면 항상 1회 실행
+ *  3) LLM이 "ALL_CORRECT" 를 반환하면 원문 유지, 그 외엔 수정본 사용
+ */
+async function factCheckAndFixScript(script, wikiText, factBullets) {
+  const sourceText = [wikiText, factBullets].filter(Boolean).join('\n');
+  if (!sourceText.trim()) return script; // 소스 없으면 검증 불가
+
+  // 빠른 연도 사전 검사 — 소스에 없는 연도가 있으면 무조건 수정 패스 실행
+  const scriptYears = extractYears(script);
+  const sourceYears = extractYears(sourceText);
+  const badYears = [...scriptYears].filter((y) => !sourceYears.has(y));
+  if (badYears.length) {
+    console.warn(`  [Fact-check] 소스에 없는 연도: ${badYears.join(', ')}`);
+  }
+
+  console.log('  [Fact-check] 스크립트 사실 검증 중...');
+
+  const fixed = await completeLlm({
+    maxTokens: 320,
+    user: `You are a fact-checker for a short video script. Compare every specific claim in the SCRIPT against the VERIFIED SOURCES below.
+
+VERIFIED SOURCES:
+${sourceText.slice(0, 5000)}
+
+SCRIPT:
+${script}
+
+Check for errors in:
+- Years / dates (e.g. wrong decade or century)
+- Names of people, places, ships, cases
+- Monetary amounts or numbers stated as fact
+- Outcomes: arrests, convictions, acquittals, whether a body/remains were found
+- "First", "largest", "only" superlatives not supported by sources
+
+Rules for your response:
+- If ALL specific claims in the script are supported by the sources (or are vague enough not to be checkable), output exactly: ALL_CORRECT
+- If ANY claim is unsupported or contradicts sources:
+  - Fix it using the sources (correct year, correct name, etc.)
+  - If you cannot find the correct value in sources, remove the specific claim or rephrase vaguely (e.g. "at some point" instead of a wrong year)
+  - Do NOT add new specific facts not in the sources
+  - Output ONLY the corrected script, nothing else — no explanation, no preamble
+- Keep the script voice, tone, and word count as close to the original as possible.`,
+  });
+
+  const result = fixed.trim();
+  if (result === 'ALL_CORRECT' || result.toUpperCase().startsWith('ALL_CORRECT')) {
+    console.log('  [Fact-check] 이상 없음 ✓');
+    return script;
+  }
+
+  console.warn('  [Fact-check] 수정 적용됨');
+  return clampShortsScript(result, SHORTS_MAX_WORDS);
+}
+
+/**
  * 모델이 길이 지시를 어겼을 때 TTS·영상 길이 폭주 방지 — 단어 수 상한 + 가능하면 문장 끝에서 자름
  */
 function clampShortsScript(text, maxWords = SHORTS_MAX_WORDS) {
@@ -132,7 +199,10 @@ BALANCED GROUNDING (read carefully):
       `  [Shorts] 스크립트 길이 제한: ${wcBefore} → ${wcAfter} words (max ${SHORTS_MAX_WORDS})`
     );
   }
-  return clamped;
+
+  // 종합 팩트-체크: 소스가 있으면 연도·이름·결과 등 모든 구체적 주장 검증
+  const checked = await factCheckAndFixScript(clamped, wiki, fact);
+  return checked;
 }
 
 async function generateMetadata(script, topic, genreKey = DEFAULT_GENRE) {
