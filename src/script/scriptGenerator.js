@@ -90,7 +90,7 @@ function validateTopicWithWiki(topic, wikiResult) {
   else if (categoryHits === 1) score += 1;
 
   const extract = (wikiResult.extract || '').toLowerCase();
-  const extractHits = topicTokens.filter((t) => t.length > 3 && extract.includes(t)).length;
+  const extractHits = properNouns.filter((t) => t.length > 3 && extract.includes(t)).length;
   if (extractHits >= 2) score += 1;
 
   return {
