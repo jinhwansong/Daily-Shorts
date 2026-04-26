@@ -40,24 +40,31 @@ function validateTopicWithWiki(topic, wikiResult) {
 
   let score = 0;
 
-  const normTokens = (s) =>
-    String(s || '')
-      .toLowerCase()
-      .split(/\s+/)
-      .map((t) => t.replace(/^[^a-z0-9가-힣]+|[^a-z0-9가-힣]+$/gi, ''))
-      .filter(Boolean);
+  const cleanToken = (t) => t.replace(/^[^a-zA-Z0-9]+|[^a-zA-Z0-9]+$/g, '');
 
-  const topicTokens = normTokens(topic);
-  const wikiTokens = normTokens(wikiResult.title || '');
-  if (!topicTokens.length || !wikiTokens.length) {
+  // 토픽에서 고유명사(대문자 시작)만 추출 — 문장 첫 단어(The/A/An 등)는 제외
+  const topicWords = String(topic || '').split(/\s+/);
+  const properNouns = topicWords
+    .slice(1) // 문장 첫 단어 제외
+    .map(cleanToken)
+    .filter((t) => t.length > 0 && /^[A-Z]/.test(t))
+    .map((t) => t.toLowerCase());
+
+  // 위키 제목 토큰 (소문자 정규화)
+  const wikiTokens = String(wikiResult.title || '')
+    .split(/\s+/)
+    .map(cleanToken)
+    .filter(Boolean)
+    .map((t) => t.toLowerCase());
+
+  if (!properNouns.length || !wikiTokens.length) {
     return { valid: false, score: 0, reason: 'title_mismatch' };
   }
 
   const wikiSet = new Set(wikiTokens);
-  const overlap = topicTokens.filter((t) => wikiSet.has(t)).length;
-  const similarity = overlap / Math.max(topicTokens.length, wikiTokens.length);
-  if (similarity >= 0.5) score += 2;
-  else if (similarity >= 0.25) score += 1;
+  const overlap = properNouns.filter((t) => wikiSet.has(t)).length;
+
+  if (overlap >= 1) score += 2;
   else return { valid: false, score, reason: 'title_mismatch' };
 
   const GOOD_CATEGORIES = [
