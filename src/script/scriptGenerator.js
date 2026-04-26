@@ -25,6 +25,84 @@ function loadPrompt(genreKey) {
   return fs.readFileSync(genre.promptFile, 'utf-8');
 }
 
+/**
+ * 토픽이 실존하는 미스터리/범죄 사건인지 결정론적으로 검증.
+ * LLM 없이 위키 데이터만으로 판단.
+ *
+ * @param {string} topic
+ * @param {{ title?: string, extract?: string, categories?: string[], found?: boolean }} wikiResult
+ * @returns {{ valid: boolean, score: number, reason: string }}
+ */
+function validateTopicWithWiki(topic, wikiResult) {
+  if (!wikiResult || !wikiResult.found) {
+    return { valid: false, score: 0, reason: 'no_wiki' };
+  }
+
+  let score = 0;
+
+  const normTokens = (s) =>
+    String(s || '')
+      .toLowerCase()
+      .split(/\s+/)
+      .map((t) => t.replace(/^[^a-z0-9가-힣]+|[^a-z0-9가-힣]+$/gi, ''))
+      .filter(Boolean);
+
+  const topicTokens = normTokens(topic);
+  const wikiTokens = normTokens(wikiResult.title || '');
+  if (!topicTokens.length || !wikiTokens.length) {
+    return { valid: false, score: 0, reason: 'title_mismatch' };
+  }
+
+  const wikiSet = new Set(wikiTokens);
+  const overlap = topicTokens.filter((t) => wikiSet.has(t)).length;
+  const similarity = overlap / Math.max(topicTokens.length, wikiTokens.length);
+  if (similarity >= 0.5) score += 2;
+  else if (similarity >= 0.25) score += 1;
+  else return { valid: false, score, reason: 'title_mismatch' };
+
+  const GOOD_CATEGORIES = [
+    'murder',
+    'disappearance',
+    'unsolved',
+    'missing person',
+    'homicide',
+    'crime',
+    'death',
+    'serial killer',
+    'cold case',
+    'accident',
+    'disaster',
+    'conspiracy',
+    'assassination',
+    'kidnapping',
+    'robbery',
+  ];
+  const catsJoined = (wikiResult.categories || []).join(' ').toLowerCase();
+  const categoryHits = GOOD_CATEGORIES.filter((k) => catsJoined.includes(k)).length;
+  if (categoryHits >= 2) score += 2;
+  else if (categoryHits === 1) score += 1;
+
+  const extract = (wikiResult.extract || '').toLowerCase();
+  const extractHits = topicTokens.filter((t) => t.length > 3 && extract.includes(t)).length;
+  if (extractHits >= 2) score += 1;
+
+  return {
+    valid: score >= 4,
+    score,
+    reason: score >= 4 ? 'passed' : 'low_score',
+  };
+}
+
+/** 소스 문장에 번호 부여 — 팩트체크 시 SUPPORT가 실제 문장을 가리키게 함 */
+function numberSentences(text) {
+  return String(text || '')
+    .split(/(?<=[.!?])\s+/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((s, i) => `[${i + 1}] ${s}`)
+    .join('\n');
+}
+
 /** 하이쿠 1회: 위키+토픽에서만 불릿 추출 → 본문은 불릿+위키 밖의 구체 주장 금지 */
 function isShortsFactsStepEnabled() {
   return (process.env.SHORTS_FACTS_STEP || '1').toString().trim() !== '0';
@@ -123,25 +201,32 @@ async function factCheckAndFixScript(script, wikiText, factBullets) {
     ? `\n⚠ HARD FAIL — regex confirmed these years are NOT in sources: ${badYears.join(', ')}. You MUST fix them. Do NOT output PASS.\n`
     : '';
 
+  const numberedSource = numberSentences(sourceText.slice(0, 5000));
+
   const raw = await completeLlmFactcheck({
     maxTokens: 520,
     user: `You are a citation-grounded fact-checker. Work through the steps below.
 
-VERIFIED SOURCES:
-${sourceText.slice(0, 5000)}
+VERIFIED SOURCES (each line starts with a sentence number [n] — you may ONLY cite these):
+${numberedSource}
 
 SCRIPT TO CHECK:
 ${script}
 ${hardYearWarning}
 --- STEP 1: Identify every specific, checkable claim in the SCRIPT ---
 List each as:
-CLAIM: <the claim> | SUPPORT: <exact quote from VERIFIED SOURCES> or SUPPORT: NOT_FOUND
+CLAIM: <the claim> | SUPPORT: [sentence_number] <verbatim substring copied from that numbered line only>
+or CLAIM: <the claim> | SUPPORT: NOT_FOUND
+
+Rules for SUPPORT:
+- MUST start with [n] matching a line in VERIFIED SOURCES above, then a substring that actually appears on that same line.
+- If you cannot cite a real [n] and substring, use NOT_FOUND (do not invent sentence numbers).
 
 Types to check: years/decades, people's names, place names, monetary amounts, "body found/not found", convictions/acquittals, "first"/"only"/"largest" superlatives.
 
 --- STEP 2: Count NOT_FOUND items ---
-VERDICT: PASS   ← only if every CLAIM has a real SUPPORT quote AND no ⚠ HARD FAIL above
-VERDICT: FAIL   ← if any NOT_FOUND, or ⚠ HARD FAIL is present
+VERDICT: PASS   ← only if every CLAIM has a valid [n] SUPPORT (not NOT_FOUND) AND no ⚠ HARD FAIL above
+VERDICT: FAIL   ← if any NOT_FOUND, invalid/missing [n], or ⚠ HARD FAIL is present
 
 --- STEP 3: Output ---
 If VERDICT: PASS → output exactly: ALL_CORRECT
@@ -207,6 +292,19 @@ async function generateScript(topic, genreKey = DEFAULT_GENRE, options = {}) {
   if (genre.format === 'longform') {
     throw new Error('generateScript() is for Shorts only; use generateLongformScript() for longform.');
   }
+
+  const wikiResult = options.wikiResult;
+  if (wikiResult) {
+    const validation = validateTopicWithWiki(topic, wikiResult);
+    if (!validation.valid) {
+      console.warn(
+        `  [Topic] 토픽 검증 실패 (score: ${validation.score}, reason: ${validation.reason}) — 스킵`
+      );
+      return null;
+    }
+    console.log(`  [Topic] 토픽 검증 통과 (score: ${validation.score})`);
+  }
+
   const wiki = options.wikiContext && String(options.wikiContext).trim();
   const hasWiki = !!wiki;
   const wikiBlock = wiki
@@ -452,4 +550,5 @@ module.exports = {
   generateLongformMetadata,
   generateShortsFactBullets,
   isShortsFactsStepEnabled,
+  validateTopicWithWiki,
 };

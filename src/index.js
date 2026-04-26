@@ -47,33 +47,55 @@ async function runPipeline(topic, genreKey) {
   const outputDir = path.join(__dirname, `../output/${genreKey}_${jobId}`);
   fs.mkdirSync(outputDir, { recursive: true });
 
-  console.log(`\n[${genre.label}] Topic: ${topic}`);
+  let currentTopic = topic;
+  let script = null;
+  let scriptOptions = {};
 
-  const scriptOptions = {};
-  if (isWikiContextEnabled()) {
-    const wiki = await fetchWikipediaContext(topic);
-    if (wiki) {
-      console.log(`  [Wiki] ${wiki.title} — ${wiki.url}`);
-      fs.writeFileSync(
-        path.join(outputDir, 'wikipedia_context.txt'),
-        `${wiki.title}\n${wiki.url}\n\n${wiki.text}`
-      );
-    } else {
-      console.log('  [Wiki] (no en.wikipedia article to ground — script without extract)');
+  for (let attempt = 1; attempt <= 3 && !script; attempt++) {
+    if (attempt > 1) {
+      console.warn(`  [Topic] 재시도 ${attempt - 1}/3`);
+      const one = await generateTopics(1, genreKey);
+      currentTopic = one[0];
     }
-    scriptOptions.wikiContext = wiki ? wiki.text : undefined;
+    console.log(`\n[${genre.label}] Topic: ${currentTopic}`);
+
+    scriptOptions = {};
+    if (isWikiContextEnabled()) {
+      const wiki = await fetchWikipediaContext(currentTopic);
+      if (wiki) {
+        console.log(`  [Wiki] ${wiki.title} — ${wiki.url}`);
+        fs.writeFileSync(
+          path.join(outputDir, 'wikipedia_context.txt'),
+          `${wiki.title}\n${wiki.url}\n\n${wiki.text}`
+        );
+      } else {
+        console.log('  [Wiki] (no en.wikipedia article to ground — script without extract)');
+      }
+      scriptOptions.wikiContext = wiki ? wiki.text : undefined;
+      if (wiki) scriptOptions.wikiResult = wiki;
+    }
+
+    if (isShortsFactsStepEnabled()) {
+      const factBullets = await generateShortsFactBullets(
+        currentTopic,
+        scriptOptions.wikiContext,
+        genreKey
+      );
+      scriptOptions.factBullets = factBullets;
+      fs.writeFileSync(path.join(outputDir, 'shorts_fact_bullets.txt'), factBullets);
+      console.log('  [Facts] haiku fact-bullet pass (see output/.../shorts_fact_bullets.txt)');
+    }
+
+    script = await generateScript(currentTopic, genreKey, scriptOptions);
   }
 
-  if (isShortsFactsStepEnabled()) {
-    const factBullets = await generateShortsFactBullets(topic, scriptOptions.wikiContext, genreKey);
-    scriptOptions.factBullets = factBullets;
-    fs.writeFileSync(path.join(outputDir, 'shorts_fact_bullets.txt'), factBullets);
-    console.log('  [Facts] haiku fact-bullet pass (see output/.../shorts_fact_bullets.txt)');
+  if (!script) {
+    console.error('  [Topic] 3회 시도 후 유효 토픽 없음 — 이번 실행 건너뜀');
+    return null;
   }
 
   // 스크립트 + 메타데이터
-  const script = await generateScript(topic, genreKey, scriptOptions);
-  const metadata = await generateMetadata(script, topic, genreKey);
+  const metadata = await generateMetadata(script, currentTopic, genreKey);
   fs.writeFileSync(path.join(outputDir, 'script.txt'), script);
   fs.writeFileSync(path.join(outputDir, 'metadata.json'), JSON.stringify(metadata, null, 2));
   console.log(`  Title: ${metadata.title}`);
@@ -203,7 +225,7 @@ async function runPipeline(topic, genreKey) {
   const { videoId, videoUrl } = await uploadVideo(finalPath, metadata, genreKey);
   await setThumbnail(videoId, thumbnailPath, genreKey);
 
-  const result = { jobId, genreKey, topic, metadata, videoId, videoUrl };
+  const result = { jobId, genreKey, topic: currentTopic, metadata, videoId, videoUrl };
   fs.writeFileSync(path.join(outputDir, 'result.json'), JSON.stringify(result, null, 2));
   console.log(`  Uploaded: ${videoUrl}`);
   return result;
@@ -314,7 +336,14 @@ async function runBatch(genreKey, count = UPLOAD_COUNT) {
   const results = [];
   for (let i = 0; i < topics.length; i++) {
     try {
-      results.push(await pipelineFn(topics[i], genreKey));
+      const run = await pipelineFn(topics[i], genreKey);
+      if (run) results.push(run);
+      else
+        results.push({
+          skipped: true,
+          reason: 'topic_validation_exhausted',
+          topic: topics[i],
+        });
     } catch (err) {
       console.error(`  Video ${i + 1} failed:`, err.message);
       results.push({ error: err.message, topic: topics[i] });

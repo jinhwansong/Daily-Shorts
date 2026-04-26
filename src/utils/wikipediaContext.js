@@ -77,7 +77,7 @@ async function opensearch(q, limit = 5) {
 }
 
 /**
- * @returns {Promise<{ title: string, url: string, text: string } | null>}
+ * @returns {Promise<{ title: string, url: string, text: string, extract: string, categories: string[], found: boolean } | null>}
  */
 async function fetchWikipediaContext(topic) {
   if (!isEnabled()) return null;
@@ -87,14 +87,19 @@ async function fetchWikipediaContext(topic) {
   for (const q of queries) {
     const titles = await opensearch(q);
     for (const title of titles) {
-      const text = await fetchPlainExtract(title);
-      if (text && text.length > 80) {
-        const slug = title.replace(/ /g, '_');
-        console.log(`  [Wiki] 검색어: "${q}" → "${title}"`);
+      const page = await fetchPageExtractAndCategories(title);
+      if (page && page.extract && page.extract.length > 80) {
+        const resolvedTitle = page.title || title;
+        const slug = resolvedTitle.replace(/ /g, '_');
+        console.log(`  [Wiki] 검색어: "${q}" → "${resolvedTitle}"`);
+        const extract = page.extract.trim();
         return {
-          title,
+          title: resolvedTitle,
           url: `https://en.wikipedia.org/wiki/${encodeURIComponent(slug)}`,
-          text: text.slice(0, MAX_EXTRACT_CHARS).trim(),
+          extract,
+          text: extract.slice(0, MAX_EXTRACT_CHARS).trim(),
+          categories: page.categories,
+          found: true,
         };
       }
     }
@@ -103,30 +108,44 @@ async function fetchWikipediaContext(topic) {
   return null;
 }
 
-async function fetchPlainExtract(title) {
+/**
+ * 단일 action=query — extracts + categories (별도 요청 없음)
+ * @returns {Promise<{ title: string, extract: string, categories: string[] } | null>}
+ */
+async function fetchPageExtractAndCategories(title) {
   try {
     const res = await api.get('https://en.wikipedia.org/w/api.php', {
       params: {
         action: 'query',
         format: 'json',
-        prop: 'extracts',
+        prop: 'extracts|categories',
         explaintext: 1,
         exsectionformat: 'plain',
         exintro: 0,
         exlimit: 1,
-        /** 기본이 짧을 수 있어 본문 일부 (문자 수) */
         exchars: Math.min(12000, MAX_EXTRACT_CHARS + 2000),
         redirects: 1,
         titles: title,
+        cllimit: 20,
       },
     });
     const pages = res.data?.query?.pages;
     if (!pages) return null;
     const id = Object.keys(pages)[0];
     if (!id || id === '-1') return null;
-    const ext = pages[id].extract;
+    const p = pages[id];
+    const ext = p.extract;
     if (!ext || typeof ext !== 'string') return null;
-    return ext;
+    const rawCats = Array.isArray(p.categories) ? p.categories : [];
+    const categories = rawCats
+      .map((c) => (c && c.title ? String(c.title) : ''))
+      .filter(Boolean)
+      .map((t) => t.replace(/^Category:/i, ''));
+    return {
+      title: p.title && String(p.title).trim() ? String(p.title).trim() : title,
+      extract: ext,
+      categories,
+    };
   } catch (e) {
     return null;
   }
