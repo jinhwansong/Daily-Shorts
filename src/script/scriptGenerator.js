@@ -3,10 +3,14 @@ const { getGenre, DEFAULT_GENRE } = require('../genres');
 const { scriptUserMessageAddon, metadataPromptAddon } = require('../utils/contentIntensity');
 const { completeLlm, completeLlmLongform, completeLlmFactcheck } = require('./scriptLlm');
 
-/** 쇼츠 TTS 길이 상한(단어). mystery 등 숏폼만 적용 — env SHORTS_MAX_WORDS 로 조정 가능 */
+/**
+ * 쇼츠 TTS 길이 상한(단어). mystery 등 숏폼만 적용 — env SHORTS_MAX_WORDS 로 조정 가능.
+ * 기본 80: 140 wpm 기준 약 34초 TTS → 30~44초 목표 범위 중심.
+ *  30초 ≈ 70 words / 44초 ≈ 103 words (130~150 wpm 기준)
+ */
 const SHORTS_MAX_WORDS = Math.max(
   55,
-  Math.min(120, parseInt(process.env.SHORTS_MAX_WORDS || '95', 10))
+  Math.min(120, parseInt(process.env.SHORTS_MAX_WORDS || '80', 10))
 );
 
 /** YouTube API snippet.title hard limit; 파싱 실패 시 토픽 폴백도 잘릴 수 있게 */

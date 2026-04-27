@@ -4,6 +4,51 @@ const { getGenre, DEFAULT_GENRE } = require('../genres');
 const { topicPromptAddon } = require('../utils/contentIntensity');
 const { completeLlm } = require('./scriptLlm');
 
+const TOPIC_HISTORY_FILE = path.join(__dirname, '../../output/topic_history.json');
+
+/** TOPIC_DEDUP_DAYS 환경변수 (기본 14일) */
+function getDedupDays() {
+  const n = parseInt(process.env.TOPIC_DEDUP_DAYS || '14', 10);
+  return Number.isFinite(n) && n > 0 ? n : 14;
+}
+
+/** topic_history.json 로드. { topics: [{ topic, date }] } */
+function loadTopicHistory() {
+  if (!fs.existsSync(TOPIC_HISTORY_FILE)) return { topics: [] };
+  try {
+    const parsed = JSON.parse(fs.readFileSync(TOPIC_HISTORY_FILE, 'utf-8'));
+    if (Array.isArray(parsed?.topics)) return parsed;
+    return { topics: [] };
+  } catch {
+    return { topics: [] };
+  }
+}
+
+/** topic_history.json에 새 토픽 append (최근 500개 유지) */
+function appendTopicHistory(newTopics) {
+  const history = loadTopicHistory();
+  const today = new Date().toISOString().slice(0, 10);
+  history.topics = [
+    ...history.topics,
+    ...newTopics.map((topic) => ({ topic, date: today })),
+  ].slice(-500);
+  fs.mkdirSync(path.dirname(TOPIC_HISTORY_FILE), { recursive: true });
+  fs.writeFileSync(TOPIC_HISTORY_FILE, JSON.stringify(history, null, 2));
+}
+
+/** 최근 N일 내 사용된 토픽 목록 반환 */
+function getRecentTopicsFromHistory(dedupDays) {
+  const history = loadTopicHistory();
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - dedupDays);
+  return history.topics
+    .filter((entry) => {
+      const d = new Date(entry.date);
+      return !isNaN(d.getTime()) && d >= cutoff;
+    })
+    .map((entry) => entry.topic);
+}
+
 function usedTopicsFile(genreKey) {
   return path.join(__dirname, `../../output/used_topics_${genreKey}.json`);
 }
@@ -45,10 +90,21 @@ async function generateTopics(count = 1, genreKey = DEFAULT_GENRE) {
   const usedTopics = loadUsedTopics(genreKey);
   const recentSample = usedTopics.slice(-30);
 
-  const avoidContext =
-    recentSample.length > 0
-      ? `\nAvoid these recently used topics:\n${recentSample.map((t, i) => `${i + 1}. ${t}`).join('\n')}\n`
-      : '';
+  // 날짜 기반 dedup: 최근 N일 내 history에서 중복 방지
+  const dedupDays = getDedupDays();
+  const recentFromHistory = getRecentTopicsFromHistory(dedupDays);
+
+  const allAvoid = [
+    ...new Set([...recentSample, ...recentFromHistory]),
+  ];
+
+  let avoidContext = '';
+  if (allAvoid.length > 0) {
+    avoidContext =
+      `\nAVOID these topics already used in the last ${dedupDays} days:\n` +
+      `${allAvoid.map((t) => `- ${t}`).join('\n')}\n` +
+      `Do NOT generate any topic about the same person, case, or event.\n`;
+  }
 
   const instruction = genre.topicInstruction.replace('{count}', count);
 
@@ -69,6 +125,7 @@ Rules:
     .slice(0, count);
 
   saveUsedTopics(genreKey, [...usedTopics, ...topics]);
+  appendTopicHistory(topics);
   return topics;
 }
 

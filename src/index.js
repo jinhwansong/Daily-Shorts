@@ -18,7 +18,7 @@ const {
 } = require('./audio/freesoundBgm');
 const { fetchBackgroundVideo, fetchNBackgroundVideos } = require('./video/videoFetcher');
 const { generateSubtitles, srtToAss } = require('./video/subtitleGenerator');
-const { composeVideo } = require('./video/videoComposer');
+const { composeVideo, getAudioDuration } = require('./video/videoComposer');
 const { composeLongformVideo } = require('./video/longformVideoComposer');
 const { generateThumbnail, pickLongformThumbnailHook } = require('./video/thumbnailGenerator');
 const { uploadVideo, setThumbnail } = require('./upload/youtubeUploader');
@@ -29,6 +29,7 @@ const { runCopyrightGuard } = require('./utils/copyrightGuard');
 const { getAttributionFooter } = require('./utils/attributionFooter');
 const { pickRandomLocalBgm, listMp3InDir } = require('./utils/localBgm');
 const { runDryRunPipeline } = require('./utils/dryRunPipeline');
+const { createHookClip } = require('./video/hookImageGenerator');
 const { normalizeLevel } = require('./utils/contentIntensity');
 const { fetchWikipediaContext, isWikiContextEnabled } = require('./utils/wikipediaContext');
 const {
@@ -183,9 +184,13 @@ async function runPipeline(topic, genreKey) {
       ? `${hookSource.substring(0, THUMB_HOOK_MAX).trim()}…`
       : hookSource;
 
+  // Nano Banana 훅 이미지 클립 생성 (실패해도 파이프라인 계속)
+  const hookClipPath = await createHookClip(outputDir, currentTopic, metadata.thumbnailQuery || null);
+
   const [finalPath, thumbnailPath] = await Promise.all([
     composeVideo(videoPath, audioPath, assPath, outputDir, {
       bgmPath,
+      hookClipPath,
       ...(backgroundPaths && backgroundPaths.length > 1
         ? { backgroundPaths }
         : videoPath2
@@ -219,6 +224,16 @@ async function runPipeline(topic, genreKey) {
     } catch (_) {
       /* ignore */
     }
+  }
+
+  // 업로드 전 영상 길이 체크 (SHORTS_MAX_DURATION_SEC, 기본 60초)
+  const maxDurationSec = Math.max(10, parseInt(process.env.SHORTS_MAX_DURATION_SEC || '60', 10));
+  const finalDuration = await getAudioDuration(finalPath).catch(() => null);
+  if (finalDuration !== null && finalDuration > maxDurationSec) {
+    console.warn(
+      `[Length] 영상 길이 ${Math.round(finalDuration)}초 — 상한(${maxDurationSec}초) 초과, 업로드 스킵`
+    );
+    return { jobId, genreKey, topic: currentTopic, metadata, skipped: true, reason: 'length_exceeded', durationSec: Math.round(finalDuration) };
   }
 
   // YouTube 업로드

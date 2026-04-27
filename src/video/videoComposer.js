@@ -10,7 +10,9 @@ const {
   loudnormI,
   loudnormTP,
   loudnormLRA,
+  isMysteryColorGradeOn,
 } = require('../utils/videoPipelineEnv');
+const { HOOK_CLIP_DURATION } = require('./hookImageGenerator');
 const {
   videoEqBrightness,
   videoEqSaturation,
@@ -91,6 +93,10 @@ function parseEqParams() {
 }
 
 function buildColorChain() {
+  if (isMysteryColorGradeOn()) {
+    // 미스터리 색보정: curves(어둡게) + eq(대비↑ 채도↓) + vignette(영화적 가장자리)
+    return `curves=all='0/0 0.3/0.15 1/0.8',eq=contrast=1.3:brightness=-0.05:saturation=0.6,vignette=PI/4`;
+  }
   const { brightness, saturation } = parseEqParams();
   const eq = `eq=brightness=${brightness}:saturation=${saturation}`;
   if (videoSharpenOn()) {
@@ -136,33 +142,56 @@ function splitEqualDurationsStr(TD, n) {
 }
 
 /**
- * nSeg: 배경 클립 개수(1=단일, 2+=concat 후 자막)
+ * @param {string} assPathEscaped
+ * @param {string} TD_pexels  Pexels 클립 총 커버 시간 (hook 제외)
+ * @param {number} nSeg       Pexels 배경 클립 수
+ * @param {boolean} hasHook   훅 이미지 클립 사용 여부 (입력 [0])
+ *
+ * hook 있을 때 입력 순서: [0]=hook_clip, [1..N]=bgList
+ * hook 없을 때 입력 순서: [0..N-1]=bgList
  */
-function buildVideoFilterGraph(assPathEscaped, TD, nSeg) {
+function buildVideoFilterGraph(assPathEscaped, TD_pexels, nSeg, hasHook) {
   const sub = buildSubtitlesFilter(assPathEscaped);
-  if (nSeg <= 1) {
-    const base = scaleTrimColorInput('[0:v]', TD, '[vbase]');
-    return [
-      `${base};`,
-      `${kenBurnsSegment('[vbase]', '[vkb]')};`,
-      `[vkb]${sub}[burned]`,
-    ].join('');
+  const bgStart = hasHook ? 1 : 0;
+  const totalN = hasHook ? nSeg + 1 : nSeg;
+
+  const parts = [];
+  const concatInputs = [];
+
+  if (hasHook) {
+    // 훅 클립: scale/crop만 적용, 색보정 없음
+    parts.push(
+      `[0:v]trim=duration=${HOOK_CLIP_DURATION},setpts=PTS-STARTPTS,` +
+        `scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=increase,` +
+        `crop=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT},setsar=1,format=yuv420p[hpre]`
+    );
+    concatInputs.push('[hpre]');
   }
 
-  const durs = splitEqualDurationsStr(TD, nSeg);
-  const segs = [];
-  for (let i = 0; i < nSeg; i++) {
-    segs.push(scaleTrimColorInput(`[${i}:v]`, durs[i], `[vpre${i}]`));
+  if (nSeg === 1) {
+    const base = scaleTrimColorInput(`[${bgStart}:v]`, TD_pexels, '[vpre0]');
+    parts.push(base);
+    concatInputs.push('[vpre0]');
+  } else {
+    const durs = splitEqualDurationsStr(TD_pexels, nSeg);
+    for (let i = 0; i < nSeg; i++) {
+      parts.push(scaleTrimColorInput(`[${bgStart + i}:v]`, durs[i], `[vpre${i}]`));
+      concatInputs.push(`[vpre${i}]`);
+    }
   }
-  const concatIn = durs
-    .map((_, i) => `[vpre${i}]`)
-    .join('');
-  return [
-    segs.join(';') + `;`,
-    `${concatIn}concat=n=${nSeg}:v=1:a=0[vcat];`,
-    `${kenBurnsSegment('[vcat]', '[vkb]')};`,
-    `[vkb]${sub}[burned]`,
-  ].join('');
+
+  let vForKB;
+  if (totalN === 1) {
+    vForKB = '[vpre0]';
+  } else {
+    parts.push(`${concatInputs.join('')}concat=n=${totalN}:v=1:a=0[vcat]`);
+    vForKB = '[vcat]';
+  }
+
+  parts.push(kenBurnsSegment(vForKB, '[vkb]'));
+  parts.push(`[vkb]${sub}[burned]`);
+
+  return parts.join(';');
 }
 
 function buildVoiceOnlyAudioChain(audioInputLabel, TD) {
@@ -185,16 +214,23 @@ function buildVoiceOnlyAudioChain(audioInputLabel, TD) {
  * @param {string} audioPath
  * @param {string} assPath
  * @param {string} outputDir
- * @param {{ bgmPath?: string | null, backgroundPath2?: string | null, backgroundPaths?: string[] | null }} [options]
+ * @param {{ bgmPath?: string | null, backgroundPath2?: string | null, backgroundPaths?: string[] | null, hookClipPath?: string | null }} [options]
  */
 async function composeVideo(backgroundPath, audioPath, assPath, outputDir, options = {}) {
-  const { bgmPath: bgmPathOpt, backgroundPath2, backgroundPaths: bgPathsIn } = options;
+  const { bgmPath: bgmPathOpt, backgroundPath2, backgroundPaths: bgPathsIn, hookClipPath: hookClipOpt } = options;
   const bgmPath =
     bgmPathOpt && fs.existsSync(path.resolve(bgmPathOpt)) ? path.resolve(bgmPathOpt) : null;
+  const hookClipPath =
+    hookClipOpt && fs.existsSync(path.resolve(hookClipOpt)) ? path.resolve(hookClipOpt) : null;
+  const hasHook = !!hookClipPath;
 
   const duration = await getAudioDuration(audioPath);
-  const totalDuration = duration + 1.5;
+  // Pexels 클립이 커버할 시간 (hook 제외)
+  const TD_pexels = (duration + 1.5).toFixed(3);
+  // 전체 영상 길이 (hook 있으면 1.5초 추가)
+  const totalDuration = duration + 1.5 + (hasHook ? HOOK_CLIP_DURATION : 0);
   const TD = totalDuration.toFixed(3);
+
   const outputPath = path.resolve(path.join(outputDir, 'final.mp4'));
 
   const tmpAss = path.join(os.tmpdir(), `shorts-burn-${Date.now()}.ass`);
@@ -225,10 +261,13 @@ async function composeVideo(backgroundPath, audioPath, assPath, outputDir, optio
   const crf = String(videoCrf());
   const preset = videoPreset();
 
-  const vFilter = buildVideoFilterGraph(subPath, TD, nSeg);
+  const vFilter = buildVideoFilterGraph(subPath, TD_pexels, nSeg, hasHook);
 
-  const voiceIn = String(nSeg);
-  const bgmIn = String(nSeg + 1);
+  // 입력 인덱스: hook(있으면 0) → bgList → audio → bgm
+  const audioIdx = nSeg + (hasHook ? 1 : 0);
+  const bgmIdx = audioIdx + 1;
+  const voiceIn = String(audioIdx);
+  const bgmIn = String(bgmIdx);
 
   let args;
   let filterComplex;
@@ -254,6 +293,7 @@ async function composeVideo(backgroundPath, audioPath, assPath, outputDir, optio
     ].join('');
 
     args = ['-hide_banner', '-y'];
+    if (hookClipPath) args.push('-i', hookClipPath);
     for (const p of bgList) {
       args.push('-stream_loop', '-1', '-i', p);
     }
@@ -291,6 +331,7 @@ async function composeVideo(backgroundPath, audioPath, assPath, outputDir, optio
     filterComplex = [vFilter, ';', buildVoiceOnlyAudioChain(audioLabel, TD)].join('');
 
     args = ['-hide_banner', '-y'];
+    if (hookClipPath) args.push('-i', hookClipPath);
     for (const p of bgList) {
       args.push('-stream_loop', '-1', '-i', p);
     }

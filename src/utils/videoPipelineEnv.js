@@ -58,6 +58,11 @@ function loudnormLRA() {
   return Number.isFinite(n) ? n : 11;
 }
 
+/** `MYSTERY_COLOR_GRADE=0` 으로 비활성화 가능. 기본 켬. */
+function isMysteryColorGradeOn() {
+  return isTruthyEnv('MYSTERY_COLOR_GRADE', true);
+}
+
 module.exports = {
   isAudioLoudnormOn,
   isKenBurnsOn,
@@ -68,4 +73,5 @@ module.exports = {
   loudnormI,
   loudnormTP,
   loudnormLRA,
+  isMysteryColorGradeOn,
 };
