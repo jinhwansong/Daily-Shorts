@@ -31,6 +31,9 @@ jobs:
       FREESOUND_API_KEY: ${{ secrets.FREESOUND_API_KEY }}
       # 선택: 설명란 하단 고정 저작권·출처 (Repository secret, 여러 줄 가능)
       YOUTUBE_ATTRIBUTION_FOOTER: ${{ secrets.YOUTUBE_ATTRIBUTION_FOOTER }}
+      # Nano Banana 훅 이미지 (Gemini 이미지 생성) — secrets에 넣은 뒤 아래로 전달해야 러너에서 인식됨
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GOOGLE_AI_API_KEY: ${{ secrets.GOOGLE_AI_API_KEY }}
 
     steps:
       - uses: actions/checkout@v4
