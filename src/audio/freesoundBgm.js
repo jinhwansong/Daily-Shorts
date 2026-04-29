@@ -121,6 +121,7 @@ async function fetchFreesoundBgm(outputDir, genreKey = DEFAULT_GENRE) {
 
   const genre = getGenre(genreKey);
   const primaryQuery = genre.freesoundBgmQuery || 'ambient atmospheric loop';
+  const blockWords = (genre.freesoundBlockWords || []).map((w) => w.toLowerCase());
 
   console.log(`  Freesound BGM 검색 [장르: ${genreKey}] 기본어: "${primaryQuery}"`);
 
@@ -131,8 +132,8 @@ async function fetchFreesoundBgm(outputDir, genreKey = DEFAULT_GENRE) {
   /** duration·쿼리를 단계적으로 완화 (엄격 → 넓음 → CC0만) */
   const searchPlans = [];
 
-  const sharedFallbacks = ['ambient loop', 'ambient', 'soundscape', 'music', 'loop'];
-  const moodFallbacks = ['dark ambient', 'drone', 'dark', 'tension'];
+  const sharedFallbacks = ['dark music loop', 'cinematic music', 'suspense music', 'horror music loop', 'ambient music loop'];
+  const moodFallbacks = ['dark ambient music', 'drone music', 'tension music', 'thriller music'];
   const baseQueries = [primaryQuery, ...sharedFallbacks, ...moodFallbacks];
 
   const durationTiers = [
@@ -180,7 +181,14 @@ async function fetchFreesoundBgm(outputDir, genreKey = DEFAULT_GENRE) {
 
       const results = data.results || [];
       const candidates = shuffle(
-        results.filter((s) => s && isLicenseAllowed(s.license, allowedLicenses))
+        results.filter((s) => {
+          if (!s || !isLicenseAllowed(s.license, allowedLicenses)) return false;
+          if (blockWords.length > 0) {
+            const nameLC = (s.name || '').toLowerCase();
+            if (blockWords.some((w) => nameLC.includes(w))) return false;
+          }
+          return true;
+        })
       );
 
       if (candidates.length === 0) {

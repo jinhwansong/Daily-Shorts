@@ -35,6 +35,11 @@ Prioritize cases with a layered story: something that seems simple at first but 
     bgmDir: path.join(__dirname, '../assets/bgm/dark'),
     bgmFile: path.join(__dirname, '../assets/bgm/mystery.mp3'),
     freesoundBgmQuery: 'dark cinematic atmospheric drone mystery',
+    freesoundBlockWords: [
+      'water', 'rain', 'forest', 'bird', 'nature', 'wind', 'ocean', 'river',
+      'stream', 'brook', 'thunder', 'storm', 'leaves', 'pond', 'jungle',
+      'outdoor', 'farm', 'fire', 'cricket', 'frog', 'insect', 'wave',
+    ],
   },
   mystery: {
     label: 'Mystery & Horror',
@@ -76,6 +81,12 @@ Avoid hyper-obscure local stories unknown outside that region unless they alread
     bgmFile: path.join(__dirname, '../assets/bgm/mystery.mp3'),
     /** Freesound 검색어 (CC0만 자동 선택) */
     freesoundBgmQuery: 'dark cinematic tension heart beat ticking clock',
+    /** 이름/태그에 이 단어가 들어간 결과 제외 (자연음·효과음 방지) */
+    freesoundBlockWords: [
+      'water', 'rain', 'forest', 'bird', 'nature', 'wind', 'ocean', 'river',
+      'stream', 'brook', 'thunder', 'storm', 'leaves', 'pond', 'jungle',
+      'outdoor', 'farm', 'fire', 'cricket', 'frog', 'insect', 'wave',
+    ],
   },
 };
 

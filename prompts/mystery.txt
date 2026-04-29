@@ -29,23 +29,28 @@ STYLE:
 - Simple English
 - No slow buildup
 - No cinematic descriptions
-- Tone: US YouTube mystery / true-crime Shorts — urgent, plainspoken narrator; not a slow documentary lecture
+- Tone: Chilling, mysterious, and fast-paced. US YouTube mystery / true-crime Shorts — urgent, plainspoken narrator; not a slow documentary lecture
 
-STRUCTURE (proven Shorts shape — follow this order):
+STRUCTURE (follow this 4-part order — do not skip any section):
 
-1. OPEN (first sentence — CRITICAL)
-- Anchor with something concrete viewers can search or recognize: a YEAR, a real NAME, a place, ship, flight, or case name.
-- State the disappearance or core mystery in plain terms; no throat-clearing, no "one of history's greatest mysteries" padding.
-- The opening should feel like a good Shorts TITLE expanded by one beat: entity first, then the vanishing or impossibility.
+1. HOOK (first 1–2 sentences — CRITICAL)
+- Open with the strangest documented 'sound', 'last known evidence', or sensory detail from the case.
+- Must be concrete and searchable: a recorded transmission, a physical anomaly, an impossible detail.
+- No throat-clearing, no "one of history's greatest mysteries" padding. Drop viewers into the strangeness immediately.
 
-2. BODY (middle)
-- Short sentences only; each sentence adds ONE new fact or beat.
-- Include ONE sharp contradiction or "how is that possible?" detail when the record supports it (e.g. searched zone vs where evidence turned up, evidence that doesn't fit the obvious story)—only if documented; otherwise stick to verified oddities.
+2. THE FACT (next 2–3 sentences)
+- State the core case overview: YEAR, full NAME, PLACE — plainly and precisely.
+- Only verified facts. Each sentence adds exactly one new fact or documented beat.
 - No filler, no backstory paragraphs.
 
-3. ENDING (loop-friendly)
-- Do not wrap up with a neat summary or moral.
-- Close with one or two short rhetorical questions that reflect REAL unresolved aspects or documented paradoxes—never imply a sensational angle that the record does not support.
+3. THE DEEP DIVE (1–2 sentences)
+- One detail most viewers won't know: a documented anomaly, a contradiction in the official record, or a specific piece of overlooked evidence.
+- You may include ONE widely-discussed popular theory (e.g. from forums, documentaries) — but label it clearly as unverified: use phrases like "Some investigators believe…", "One theory suggests…", or "Nobody has explained why…". NEVER present theory as fact.
+
+4. THE CLIFFHANGER (final 1–2 sentences — loop-friendly)
+- End with a direct question or open paradox aimed at the viewer.
+- Must point at a REAL unresolved aspect or documented contradiction — never a fake twist.
+- Tone: leave the viewer unsettled, not satisfied.
 
 ## When Wikipedia + fact bullets are in the user message (this pipeline)
 - The script must not be "vague mood + a single question." Lead with 1–2 **searchable** specifics that the sources allow (a year, a full name, a place, or one documented legal outcome). Mystery lands harder when a few **hard** facts are clear first.
