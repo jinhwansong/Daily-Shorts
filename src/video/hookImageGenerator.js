@@ -3,12 +3,26 @@ const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
+// index.js 외 경로로 이 모듈만 로드될 때를 대비해 루트 .env 명시 로드
+require('dotenv').config({ path: path.join(__dirname, '../../.env') });
+
 const HOOK_CLIP_DURATION = 1.5;
 const OUTPUT_WIDTH = 1080;
 const OUTPUT_HEIGHT = 1920;
 
+function resolveGeminiApiKey() {
+  const k = (process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY || '').trim();
+  return k || '';
+}
+
 async function generateHookImage(topic, thumbnailQuery) {
-  const genai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  const apiKey = resolveGeminiApiKey();
+  if (!apiKey) {
+    throw new Error(
+      'GEMINI_API_KEY 또는 GOOGLE_AI_API_KEY 없음 (.env 또는 환경 변수 확인)'
+    );
+  }
+  const genai = new GoogleGenAI({ apiKey });
 
   const subject = thumbnailQuery || topic;
   const prompt =
