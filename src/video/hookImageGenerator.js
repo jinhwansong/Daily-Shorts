@@ -18,7 +18,7 @@ async function generateHookImage(topic, thumbnailQuery) {
     `Style: dark true crime documentary still frame.`;
 
   const response = await genai.models.generateContent({
-    model: 'gemini-2.5-flash-preview-04-17',
+    model: 'gemini-2.5-flash-image',
     contents: prompt,
     config: {
       responseModalities: ['IMAGE'],

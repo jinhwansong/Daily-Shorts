@@ -228,7 +228,8 @@ async function runPipeline(topic, genreKey) {
 
   // 업로드 전 영상 길이 체크 (SHORTS_MAX_DURATION_SEC, 기본 60초)
   const maxDurationSec = Math.max(10, parseInt(process.env.SHORTS_MAX_DURATION_SEC || '60', 10));
-  const finalDuration = await getAudioDuration(finalPath).catch(() => null);
+  let finalDuration = null;
+  try { finalDuration = getAudioDuration(finalPath); } catch { /* skip length check */ }
   if (finalDuration !== null && finalDuration > maxDurationSec) {
     console.warn(
       `[Length] 영상 길이 ${Math.round(finalDuration)}초 — 상한(${maxDurationSec}초) 초과, 업로드 스킵`
