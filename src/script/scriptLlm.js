@@ -61,7 +61,7 @@ function getOpenAI() {
 }
 
 function getGoogleGenAI() {
-  if (!googleGenAI) googleGenAI = new GoogleGenAI({ apiKey: process.env.GOOGLE_AI_API_KEY });
+  if (!googleGenAI) googleGenAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   return googleGenAI;
 }
 
@@ -118,8 +118,8 @@ async function completeLlm(p) {
   }
 
   if (provider === 'google') {
-    if (!process.env.GOOGLE_AI_API_KEY) {
-      throw new Error('GOOGLE_AI_API_KEY is required when SCRIPT_LLM_PROVIDER=google');
+    if (!process.env.GEMINI_API_KEY) {
+      throw new Error('GEMINI_API_KEY is required when SCRIPT_LLM_PROVIDER=google');
     }
     const body =
       p.system && p.system.trim()
@@ -134,7 +134,7 @@ async function completeLlm(p) {
       },
     });
     const text = geminiExtractText(res);
-    if (!text) throw new Error('Gemini: empty response (check model name and GOOGLE_AI_API_KEY)');
+    if (!text) throw new Error('Gemini: empty response (check model name and GEMINI_API_KEY)');
     return text.trim();
   }
 

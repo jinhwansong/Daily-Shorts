@@ -8,7 +8,7 @@ const OUTPUT_WIDTH = 1080;
 const OUTPUT_HEIGHT = 1920;
 
 async function generateHookImage(topic, thumbnailQuery) {
-  const genai = new GoogleGenAI({ apiKey: process.env.GOOGLE_AI_API_KEY });
+  const genai = new GoogleGenAI({});
 
   const subject = thumbnailQuery || topic;
   const prompt =

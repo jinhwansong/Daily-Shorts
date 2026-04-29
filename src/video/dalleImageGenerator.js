@@ -3,10 +3,10 @@ const Anthropic = require('@anthropic-ai/sdk');
 const fs = require('fs');
 const path = require('path');
 
-// 롱폼 이미지 생성 시에만 lazy 초기화 — Shorts 런에서 GOOGLE_AI_API_KEY 없을 때 SDK 경고 방지
+// 롱폼 이미지 생성 시에만 lazy 초기화 — Shorts 런에서 GEMINI_API_KEY 없을 때 SDK 경고 방지
 let _gemini;
 function getGemini() {
-  if (!_gemini) _gemini = new GoogleGenAI({ apiKey: process.env.GOOGLE_AI_API_KEY });
+  if (!_gemini) _gemini = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   return _gemini;
 }
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });

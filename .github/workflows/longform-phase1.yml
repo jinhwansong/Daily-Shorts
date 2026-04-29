@@ -17,7 +17,7 @@ jobs:
     timeout-minutes: 30
     env:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-      GOOGLE_AI_API_KEY: ${{ secrets.GOOGLE_AI_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       GOOGLE_CLOUD_SA_JSON: ${{ secrets.GOOGLE_CLOUD_SA_JSON }}
       GCS_BUCKET: ${{ secrets.GCS_BUCKET || 'short-mystery-ai' }}
 

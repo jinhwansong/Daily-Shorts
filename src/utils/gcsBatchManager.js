@@ -10,7 +10,7 @@ const GCS_BUCKET = process.env.GCS_BUCKET || 'short-mystery-ai';
 const STATE_OBJECT = 'pipeline-state/longform_state.json';
 
 function getAI() {
-  return new GoogleGenAI({ apiKey: process.env.GOOGLE_AI_API_KEY });
+  return new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 }
 
 function getStorage() {
