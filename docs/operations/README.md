@@ -8,5 +8,5 @@
 
 ## 코드와의 경계
 
-- 토픽 **생성 로직**은 `src/script/topicGenerator.js`의 `generateTopics()` → `src/genres.js`의 `topicInstruction`이다.
-- 이 폴더의 문서는 **행동 강령·해석**이지, 실행 코드가 아니다.
+- 토픽 **생성 로직**은 `src/script/topicGenerator.js`의 `generateTopics()` + (미스터리) `redditTopicSource` / `topicTier` + `src/genres.js`의 `topicInstruction`이다.
+- 이 폴더의 문서는 **행동 강령·해석**이지, 실행 코드가 아니다. 상세 env는 [mystery-shorts-strategy.md](./mystery-shorts-strategy.md) §6.

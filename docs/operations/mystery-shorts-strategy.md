@@ -3,7 +3,8 @@
 ## 1. 파이프라인에서 토픽이 나오는 방식 (사실)
 
 - 실행 경로: `src/script/topicGenerator.js` → LLM → `src/genres.js`의 `mystery.topicInstruction`.
-- “레딧 미스터리에서 본 사건”을 **직접 크롤링**하는 코드는 이 레포에 없다. 레딧에서 아이디어를 얻었다면, 그건 **운영자의 외부 입력**이며, LLM 토픽 문구와 **불일치할 수 있다**는 전제를 둔다.
+- **레딧 시드:** `src/script/redditTopicSource.js`가 (선택) 서브레딧 **핫** 글 제목을 가져와 프롬프트에 **REDDIT DISCUSSION SEEDS** 블록으로 넣는다. **가정·사실은 LLM이 위키/뉴스 기준으로 검증**해야 하며, 제목만 믿고 허구를 쓰면 안 된다.
+- 시드를 끄려면 환경변수 **`REDDIT_SEEDS=0`** (또는 `false`).
 
 ## 2. 목표 말하기: 평균 조회수 vs 그만두기
 
@@ -21,15 +22,21 @@
 - 제목·설명에 없는 단어가 검색어 보고에 뜰 수 있다. **최적화 타깃 키워드**로 잡기보다 **참고**로 본다.
 - 미국 시청자용 메타 규칙은 이미 `src/script/scriptGenerator.js`의 메타데이터 프롬프트에 반영되어 있다.
 
-## 5. 토픽 철학: “완전 랜덤”의 함정
+## 5. 토픽 A/B 티어 (구현됨)
 
-- LLM에 “다양하게” 뽑게 하면 **분산이 커지기 쉽다**. US 본토 시청자에게 **이름 인지도**가 낮은 사건은 **조회 바닥**이 낮아지기 쉽다.
-- `genres.js`의 `mystery` 지시문에는 이미 *recognizable*, *widely covered* 쪽 우선을 쓴다. 그래도 편차가 크면 **추가 구조(티어·비율)** 는 **코드 변경**으로 다루고, 이 문서는 그 **의도**만 남긴다.
+- **`src/script/topicTier.js`**: 배치마다 줄 단위로 **TIER A**(인지도·검색 친화) vs **TIER B**(딥컷, 여전히 출처 규율)를 **가중 랜덤** 할당한다.
+- **`TOPIC_TIER_A_WEIGHT`**: 0~1, 기본 **0.65** (A 65%, B 35% 기대값).
+- `genres.js`의 `mystery` 지시문 + 티어 블록이 같이 들어간다.
 
-## 6. 다음 단계 (코드 밖)
+## 6. 레딧·티어 환경변수 요약
 
-- 토픽을 **A/B 티어 가중치**로 나누는 것은 **별도 구현 계획**의 대상이다.
-- 본 문서는 **문서화 1단계**에서 멈춘다.
+| 변수 | 의미 |
+|------|------|
+| `REDDIT_SEEDS` | `0` / `false` 이면 레딧 호출 안 함 |
+| `REDDIT_SUBREDDITS` | 콤마 구분 서브 목록 (기본: UnresolvedMysteries, TrueCrime, ColdCase) |
+| `REDDIT_SEED_LIMIT` | 시드 제목 최대 개수 (기본 15) |
+| `REDDIT_USER_AGENT` | Reddit API 권장 — 식별 가능한 UA 문자열 |
+| `TOPIC_TIER_A_WEIGHT` | A 티어 비중 (기본 0.65) |
 
 ---
 
@@ -38,3 +45,5 @@
 - 자동화 개요: [md/automation-vs-manual.md](../../md/automation-vs-manual.md)
 - 스크립트·메타 생성: `src/script/scriptGenerator.js`
 - 토픽 LLM: `src/script/topicGenerator.js`, `src/genres.js`
+- 레딧 시드: `src/script/redditTopicSource.js`
+- A/B 티어: `src/script/topicTier.js`

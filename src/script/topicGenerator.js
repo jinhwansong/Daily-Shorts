@@ -3,6 +3,8 @@ const path = require('path');
 const { getGenre, DEFAULT_GENRE } = require('../genres');
 const { topicPromptAddon } = require('../utils/contentIntensity');
 const { completeLlm } = require('./scriptLlm');
+const { buildTierPlan, formatTierBatchBlock } = require('./topicTier');
+const { fetchRedditSeeds } = require('./redditTopicSource');
 
 const TOPIC_HISTORY_FILE = path.join(__dirname, '../../output/topic_history.json');
 
@@ -108,10 +110,24 @@ async function generateTopics(count = 1, genreKey = DEFAULT_GENRE) {
 
   const instruction = genre.topicInstruction.replace('{count}', count);
 
+  let seedBlock = '';
+  let tierBlock = '';
+  if (genreKey === 'mystery') {
+    const redditTitles = await fetchRedditSeeds();
+    if (redditTitles.length > 0) {
+      seedBlock = `
+REDDIT DISCUSSION SEEDS (titles for inspiration only — verify facts via Wikipedia / reputable news; do not invent details to match a title):
+${redditTitles.map((t) => `- ${t}`).join('\n')}
+`;
+    }
+    const tierPlan = buildTierPlan(count);
+    tierBlock = formatTierBatchBlock(tierPlan, genreKey);
+  }
+
   const raw = await completeLlm({
     maxTokens: 600,
     user: `${instruction}
-${mysteryUnresolvedTopicsAddon(genreKey)}${topicPromptAddon()}${avoidContext}
+${mysteryUnresolvedTopicsAddon(genreKey)}${topicPromptAddon()}${avoidContext}${seedBlock}${tierBlock}
 Rules:
 - Each topic must be distinct in setting, theme, and tone
 - Write each as one punchy sentence (max 20 words)

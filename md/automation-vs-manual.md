@@ -8,7 +8,7 @@
 
 | 단계 | 내용 |
 |------|------|
-| 주제 | Claude가 장르별 지시(`genres.js`) + 중복 방지(`output/used_topics_*.json`)로 N개 생성 |
+| 주제 | `genres.js` + LLM + 중복 방지(`used_topics`·`topic_history`); **미스터리**면 선택적 레딧 핫 제목 시드(`redditTopicSource`), A/B 티어 가중(`topicTier`, `TOPIC_TIER_A_WEIGHT`) |
 | 스크립트 | `prompts/mystery.txt` + 토픽, `CONTENT_HOOK_LEVEL`에 따라 훅 강도 문구 추가 |
 | 메타 | 제목, `THUMBNAIL_LINE`, 설명, 태그, Pexels 검색어(배경·썸네일에 연동) |
 | 음성 | OpenAI TTS → `audio.mp3` |
