@@ -69,3 +69,9 @@
 - [ ] 가끔 Studio에서 올라온 영상 1편씩 품질·사실 확인  
 
 이 파일은 `md/mentor.md`의 **레포 맥락**과 같이 두고, 운영 방침 바뀔 때마다 여기만 고쳐도 됩니다.
+
+---
+
+## 운영·전략 (사람이 읽는 메모)
+
+- [docs/operations/mystery-shorts-strategy.md](../docs/operations/mystery-shorts-strategy.md) — US 시청자, 지표 해석, 토픽 철학, 레딧 vs 코드 경계
