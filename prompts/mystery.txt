@@ -52,6 +52,13 @@ STRUCTURE (follow this 4-part order — do not skip any section):
 - Must point at a REAL unresolved aspect or documented contradiction — never a fake twist.
 - Tone: leave the viewer unsettled, not satisfied.
 
+BOOKEND (mandatory — opening and closing must connect):
+- Pick ONE concrete anchor from your HOOK (the sound, object, place, transmission, or last-known evidence you opened with).
+- The CLIFFHANGER must explicitly call back to that same anchor: reuse its noun, restate the paradox around it, or ask a question that only lands because of the opening beat.
+- Do NOT end with a generic closer ("Will we ever know?", "Some secrets stay buried") unless it clearly names or unmistakably refers back to that opening anchor.
+- Do NOT introduce a new focal mystery, object, or person in the final sentences that was absent from the HOOK and FACT beats—stay on one spine.
+- The viewer should feel the ending was inevitable from how the Short began.
+
 ## When Wikipedia + fact bullets are in the user message (this pipeline)
 - The script must not be "vague mood + a single question." Lead with 1–2 **searchable** specifics that the sources allow (a year, a full name, a place, or one documented legal outcome). Mystery lands harder when a few **hard** facts are clear first.
 - The fact bullets are the spine: weave their KEY ANCHORS (if provided) into the first half of the script in plain, declarative English—then tension and questions.

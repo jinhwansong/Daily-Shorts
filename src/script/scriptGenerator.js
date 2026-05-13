@@ -360,7 +360,8 @@ BALANCED GROUNDING (read carefully):
 (2) You **must** still sound like a real Short, not a hollow teaser: at least **two** concrete, allowed details in the first half—short declarative sentences, not only inside a final question. If KEY ANCHORS is present, weave those phrases in early. If there is no fact-bullet section and no Wikipedia, use only the person/case name and the general nature of the mystery — no specific numbers.
 (3) Do not write a script that is *only* vague atmosphere + one rhetorical question. The ending can ask an open question, but the middle should add **at least one more** allowed beat (documented paradox, reversal, or unknown—only if in the sources).
 (4) If sources are thin, anchor with the case/victim from the topic; keep sentences cold and fast; the closing question should point at a **documented** gap, not a made-up hook.
-(5) English only; respect the word limit for Shorts.`,
+(5) English only; respect the word limit for Shorts.
+(6) BOOKEND: The closing question or paradox must explicitly recall one concrete element from your opening sentences—the same evidence, sound, place, object, or last-known detail—not a new topic introduced only at the end.`,
     maxTokens: 280,
   });
   const wcBefore = raw.split(/\s+/).filter(Boolean).length;
