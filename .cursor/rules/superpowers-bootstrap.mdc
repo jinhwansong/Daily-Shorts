@@ -1,0 +1,9 @@
+---
+alwaysApply: true
+---
+
+You have superpowers. Read the skill at:
+~/.cursor/skills/superpowers/skills/using-superpowers/SKILL.md
+
+Before any task, check for relevant skills using the 1% rule.
+Skills location: ~/.cursor/skills/superpowers/skills/{skill-name}/SKILL.md
