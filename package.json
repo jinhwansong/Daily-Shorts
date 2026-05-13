@@ -4,7 +4,7 @@
   "description": "Mystery/Horror YouTube Shorts automation pipeline",
   "main": "src/index.js",
   "scripts": {
-    "test": "node --test tests/copyrightGuard.test.js tests/topicTier.test.js tests/redditTopicSource.test.js",
+    "test": "node --test tests/copyrightGuard.test.js tests/topicTier.test.js tests/redditTopicSource.test.js tests/topicKey.test.js tests/publishedTopics.test.js",
     "dry-run": "node src/index.js --dry-run --genre=mystery",
     "mystery": "node src/index.js --run-daily --genre=mystery --count=5",
     "mystery-long": "node src/index.js --run-once --genre=mystery-long",
@@ -19,6 +19,7 @@
     "@google-cloud/storage": "^7.19.0",
     "@google/genai": "^1.50.1",
     "@napi-rs/canvas": "^0.1.53",
+    "@supabase/supabase-js": "^2.105.4",
     "axios": "^1.7.0",
     "dotenv": "^16.4.0",
     "googleapis": "^144.0.0",

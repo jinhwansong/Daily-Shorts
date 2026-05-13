@@ -38,6 +38,7 @@ const {
   isKenBurnsOn,
   isAudioLoudnormOn,
 } = require('./utils/videoPipelineEnv');
+const { resolveTopicForUpload, recordPublishedTopic } = require('./utils/publishedTopics');
 
 const UPLOAD_COUNT = parseInt(process.env.DAILY_UPLOAD_COUNT || '5', 10);
 const REPO_ROOT = path.join(__dirname, '..');
@@ -48,7 +49,17 @@ async function runPipeline(topic, genreKey) {
   const outputDir = path.join(__dirname, `../output/${genreKey}_${jobId}`);
   fs.mkdirSync(outputDir, { recursive: true });
 
-  let currentTopic = topic;
+  let currentTopic = await resolveTopicForUpload(genreKey, topic);
+  if (!currentTopic) {
+    console.error('  [Supabase dedup] 재추첨 상한 초과 — 이번 실행 건너뜀');
+    return {
+      skipped: true,
+      reason: 'topic_supabase_dedup_exhausted',
+      genreKey,
+      topic,
+    };
+  }
+
   let script = null;
   let scriptOptions = {};
 
@@ -56,7 +67,11 @@ async function runPipeline(topic, genreKey) {
     if (attempt > 1) {
       console.warn(`  [Topic] 재시도 ${attempt - 1}/3`);
       const one = await generateTopics(1, genreKey);
-      currentTopic = one[0];
+      currentTopic = await resolveTopicForUpload(genreKey, one[0]);
+      if (!currentTopic) {
+        console.error('  [Supabase dedup] 재추첨 상한 초과 (스크립트 재시도 중)');
+        break;
+      }
     }
     console.log(`\n[${genre.label}] Topic: ${currentTopic}`);
 
@@ -241,6 +256,12 @@ async function runPipeline(topic, genreKey) {
   const { videoId, videoUrl } = await uploadVideo(finalPath, metadata, genreKey);
   await setThumbnail(videoId, thumbnailPath, genreKey);
 
+  await recordPublishedTopic({
+    genreKey,
+    topic: currentTopic,
+    videoId,
+  });
+
   const result = { jobId, genreKey, topic: currentTopic, metadata, videoId, videoUrl };
   fs.writeFileSync(path.join(outputDir, 'result.json'), JSON.stringify(result, null, 2));
   console.log(`  Uploaded: ${videoUrl}`);
@@ -252,6 +273,18 @@ async function runLongformPipeline(topic, genreKey) {
   const jobId = Date.now();
   const outputDir = path.join(__dirname, `../output/${genreKey}_${jobId}`);
   fs.mkdirSync(outputDir, { recursive: true });
+
+  let resolvedTopic = await resolveTopicForUpload(genreKey, topic);
+  if (!resolvedTopic) {
+    console.error('  [Supabase dedup] 재추첨 상한 초과 — 롱폼 건너뜀');
+    return {
+      skipped: true,
+      reason: 'topic_supabase_dedup_exhausted',
+      genreKey,
+      topic,
+    };
+  }
+  topic = resolvedTopic;
 
   console.log(`\n[${genre.label}] Topic: ${topic}`);
 
@@ -331,6 +364,8 @@ async function runLongformPipeline(topic, genreKey) {
 
   const { videoId, videoUrl } = await uploadVideo(finalPath, metadata, genreKey);
   await setThumbnail(videoId, thumbnailPath, genreKey);
+
+  await recordPublishedTopic({ genreKey, topic, videoId });
 
   if (savedPrivacy !== undefined) process.env.YOUTUBE_PRIVACY_STATUS = savedPrivacy;
   else delete process.env.YOUTUBE_PRIVACY_STATUS;

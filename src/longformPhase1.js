@@ -18,6 +18,7 @@ const path = require('path');
 
 const { getGenre } = require('./genres');
 const { generateTopics } = require('./script/topicGenerator');
+const { resolveTopicForUpload } = require('./utils/publishedTopics');
 const { generateLongformScript, generateLongformMetadata } = require('./script/scriptGenerator');
 const {
   parseScriptSections,
@@ -61,8 +62,13 @@ async function runPhase1(genreKey = 'mystery-long') {
   const outputDir = path.join(__dirname, `../output/${genreKey}_${jobId}`);
   fs.mkdirSync(outputDir, { recursive: true });
 
-  // 1. 주제 선정
-  const [topic] = await generateTopics(1, genreKey);
+  // 1. 주제 선정 (+ Supabase 6개월 중복 시 재추첨)
+  const [generated] = await generateTopics(1, genreKey);
+  const topic = await resolveTopicForUpload(genreKey, generated);
+  if (!topic) {
+    console.error('[Supabase dedup] 재추첨 상한 초과 — Phase 1 중단');
+    process.exit(1);
+  }
   console.log(`  Topic: ${topic}`);
 
   // 2. 롱폼 스크립트 생성

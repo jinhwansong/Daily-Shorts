@@ -32,6 +32,7 @@ const { parseScriptSections } = require('./video/dalleImageGenerator');
 const { generateThumbnail, pickLongformThumbnailHook } = require('./video/thumbnailGenerator');
 const { fetchLandscapeClips } = require('./video/longformVideoFetcher');
 const { uploadVideo, setThumbnail } = require('./upload/youtubeUploader');
+const { recordPublishedTopic } = require('./utils/publishedTopics');
 const { runCopyrightGuard } = require('./utils/copyrightGuard');
 const { getAttributionFooter } = require('./utils/attributionFooter');
 const { pickRandomLocalBgm } = require('./utils/localBgm');
@@ -219,11 +220,15 @@ async function runPhase2() {
   const { videoId, videoUrl } = await uploadVideo(finalPath, metadata, genreKey);
   await setThumbnail(videoId, thumbnailPath, genreKey);
 
+  await recordPublishedTopic({ genreKey, topic, videoId });
+
   if (savedPrivacy !== undefined) process.env.YOUTUBE_PRIVACY_STATUS = savedPrivacy;
   else delete process.env.YOUTUBE_PRIVACY_STATUS;
 
   console.log(`  업로드 완료 [${elapsed(tUpload)}]: ${videoUrl}`);
   console.log(`  → 스튜디오에서 확인 후 공개 전환하세요.`);
+
+  const result = { jobId, genreKey, topic, metadata, videoId, videoUrl };
 
   // 10. GCS 정리
   await cleanupGCSResults(gcsDestination);

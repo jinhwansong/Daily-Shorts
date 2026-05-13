@@ -27,6 +27,8 @@ jobs:
       YOUTUBE_REFRESH_TOKEN_MYSTERY: ${{ secrets.YOUTUBE_REFRESH_TOKEN_MYSTERY }}
       FREESOUND_API_KEY: ${{ secrets.FREESOUND_API_KEY }}
       YOUTUBE_ATTRIBUTION_FOOTER: ${{ secrets.YOUTUBE_ATTRIBUTION_FOOTER }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
 
     steps:
       - uses: actions/checkout@v4
