@@ -2,6 +2,16 @@ const { createClient } = require('@supabase/supabase-js');
 const { normalizeTopicKey } = require('./topicKey');
 const { generateTopics } = require('../script/topicGenerator');
 
+/** Node < 22 에는 전역 WebSocket 이 없음 — Supabase Realtime 초기화 시 오류 방지 (@supabase/realtime-js) */
+function patchGlobalWebSocketIfNeeded() {
+  if (typeof globalThis.WebSocket !== 'undefined') return;
+  try {
+    globalThis.WebSocket = require('ws');
+  } catch {
+    /* ws 미설치 시 createClient 단계에서 원본 에러 유지 */
+  }
+}
+
 function getCooldownMonths() {
   const n = parseInt(process.env.TOPIC_PUBLISHED_COOLDOWN_MONTHS || '6', 10);
   return Number.isFinite(n) && n > 0 ? n : 6;
@@ -24,6 +34,7 @@ function isSupabaseDedupConfigured() {
 
 function getSupabaseClient() {
   if (!isSupabaseDedupConfigured()) return null;
+  patchGlobalWebSocketIfNeeded();
   return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
