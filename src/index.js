@@ -29,7 +29,6 @@ const { runCopyrightGuard } = require('./utils/copyrightGuard');
 const { getAttributionFooter } = require('./utils/attributionFooter');
 const { pickRandomLocalBgm, listMp3InDir } = require('./utils/localBgm');
 const { runDryRunPipeline } = require('./utils/dryRunPipeline');
-const { createHookClip } = require('./video/hookImageGenerator');
 const { normalizeLevel } = require('./utils/contentIntensity');
 const { fetchWikipediaContext, isWikiContextEnabled } = require('./utils/wikipediaContext');
 const {
@@ -37,6 +36,7 @@ const {
   getBackgroundSegmentCount,
   isKenBurnsOn,
   isAudioLoudnormOn,
+  isVideoBookendRepeatFirstOn,
 } = require('./utils/videoPipelineEnv');
 const { resolveTopicForUpload, recordPublishedTopic } = require('./utils/publishedTopics');
 
@@ -199,13 +199,9 @@ async function runPipeline(topic, genreKey) {
       ? `${hookSource.substring(0, THUMB_HOOK_MAX).trim()}…`
       : hookSource;
 
-  // Nano Banana 훅 이미지 클립 생성 (실패해도 파이프라인 계속)
-  const hookClipPath = await createHookClip(outputDir, currentTopic, metadata.thumbnailQuery || null);
-
   const [finalPath, thumbnailPath] = await Promise.all([
     composeVideo(videoPath, audioPath, assPath, outputDir, {
       bgmPath,
-      hookClipPath,
       ...(backgroundPaths && backgroundPaths.length > 1
         ? { backgroundPaths }
         : videoPath2
@@ -218,7 +214,7 @@ async function runPipeline(topic, genreKey) {
   console.log(
     `  FFmpeg: dual_bg=${isDualBackgroundOn()}${
       isDualBackgroundOn() ? ` segments=${getBackgroundSegmentCount()}` : ''
-    } ken_burns=${isKenBurnsOn()} loudnorm=${isAudioLoudnormOn()}`
+    } bookend_repeat_first=${isVideoBookendRepeatFirstOn()} ken_burns=${isKenBurnsOn()} loudnorm=${isAudioLoudnormOn()}`
   );
 
   // 저작권 가드 (업로드 전 자동 검증)

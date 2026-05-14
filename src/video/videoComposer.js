@@ -11,8 +11,9 @@ const {
   loudnormTP,
   loudnormLRA,
   isMysteryColorGradeOn,
+  isVideoBookendRepeatFirstOn,
+  applyBookendBackgroundPaths,
 } = require('../utils/videoPipelineEnv');
-const { HOOK_CLIP_DURATION } = require('./hookImageGenerator');
 const {
   videoEqBrightness,
   videoEqSaturation,
@@ -143,30 +144,16 @@ function splitEqualDurationsStr(TD, n) {
 
 /**
  * @param {string} assPathEscaped
- * @param {string} TD_pexels  Pexels 클립 총 커버 시간 (hook 제외)
- * @param {number} nSeg       Pexels 배경 클립 수
- * @param {boolean} hasHook   훅 이미지 클립 사용 여부 (입력 [0])
- *
- * hook 있을 때 입력 순서: [0]=hook_clip, [1..N]=bgList
- * hook 없을 때 입력 순서: [0..N-1]=bgList
+ * @param {string} TD_pexels  Pexels 클립이 커버할 총 시간
+ * @param {number} nSeg       Pexels 배경 클립 수 (입력 [0..nSeg-1]=bgList)
  */
-function buildVideoFilterGraph(assPathEscaped, TD_pexels, nSeg, hasHook) {
+function buildVideoFilterGraph(assPathEscaped, TD_pexels, nSeg) {
   const sub = buildSubtitlesFilter(assPathEscaped);
-  const bgStart = hasHook ? 1 : 0;
-  const totalN = hasHook ? nSeg + 1 : nSeg;
+  const bgStart = 0;
+  const totalN = nSeg;
 
   const parts = [];
   const concatInputs = [];
-
-  if (hasHook) {
-    // 훅 클립: scale/crop만 적용, 색보정 없음
-    parts.push(
-      `[0:v]trim=duration=${HOOK_CLIP_DURATION},setpts=PTS-STARTPTS,` +
-        `scale=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT}:force_original_aspect_ratio=increase,` +
-        `crop=${OUTPUT_WIDTH}:${OUTPUT_HEIGHT},setsar=1,format=yuv420p[hpre]`
-    );
-    concatInputs.push('[hpre]');
-  }
 
   if (nSeg === 1) {
     const base = scaleTrimColorInput(`[${bgStart}:v]`, TD_pexels, '[vpre0]');
@@ -214,21 +201,16 @@ function buildVoiceOnlyAudioChain(audioInputLabel, TD) {
  * @param {string} audioPath
  * @param {string} assPath
  * @param {string} outputDir
- * @param {{ bgmPath?: string | null, backgroundPath2?: string | null, backgroundPaths?: string[] | null, hookClipPath?: string | null }} [options]
+ * @param {{ bgmPath?: string | null, backgroundPath2?: string | null, backgroundPaths?: string[] | null }} [options]
  */
 async function composeVideo(backgroundPath, audioPath, assPath, outputDir, options = {}) {
-  const { bgmPath: bgmPathOpt, backgroundPath2, backgroundPaths: bgPathsIn, hookClipPath: hookClipOpt } = options;
+  const { bgmPath: bgmPathOpt, backgroundPath2, backgroundPaths: bgPathsIn } = options;
   const bgmPath =
     bgmPathOpt && fs.existsSync(path.resolve(bgmPathOpt)) ? path.resolve(bgmPathOpt) : null;
-  const hookClipPath =
-    hookClipOpt && fs.existsSync(path.resolve(hookClipOpt)) ? path.resolve(hookClipOpt) : null;
-  const hasHook = !!hookClipPath;
 
   const duration = await getAudioDuration(audioPath);
-  // Pexels 클립이 커버할 시간 (hook 제외)
   const TD_pexels = (duration + 1.5).toFixed(3);
-  // 전체 영상 길이 (hook 있으면 1.5초 추가)
-  const totalDuration = duration + 1.5 + (hasHook ? HOOK_CLIP_DURATION : 0);
+  const totalDuration = duration + 1.5;
   const TD = totalDuration.toFixed(3);
 
   const outputPath = path.resolve(path.join(outputDir, 'final.mp4'));
@@ -254,6 +236,9 @@ async function composeVideo(backgroundPath, audioPath, assPath, outputDir, optio
   if (bgList.length < 1) {
     throw new Error('No background video file for composeVideo');
   }
+  if (isVideoBookendRepeatFirstOn()) {
+    bgList = applyBookendBackgroundPaths(bgList);
+  }
   const nSeg = bgList.length;
   const vol = bgmVolume();
   const bgmVol = vol.toFixed(3);
@@ -261,10 +246,10 @@ async function composeVideo(backgroundPath, audioPath, assPath, outputDir, optio
   const crf = String(videoCrf());
   const preset = videoPreset();
 
-  const vFilter = buildVideoFilterGraph(subPath, TD_pexels, nSeg, hasHook);
+  const vFilter = buildVideoFilterGraph(subPath, TD_pexels, nSeg);
 
-  // 입력 인덱스: hook(있으면 0) → bgList → audio → bgm
-  const audioIdx = nSeg + (hasHook ? 1 : 0);
+  // 입력 인덱스: bgList → audio → bgm
+  const audioIdx = nSeg;
   const bgmIdx = audioIdx + 1;
   const voiceIn = String(audioIdx);
   const bgmIn = String(bgmIdx);
@@ -293,7 +278,6 @@ async function composeVideo(backgroundPath, audioPath, assPath, outputDir, optio
     ].join('');
 
     args = ['-hide_banner', '-y'];
-    if (hookClipPath) args.push('-i', hookClipPath);
     for (const p of bgList) {
       args.push('-stream_loop', '-1', '-i', p);
     }
@@ -331,7 +315,6 @@ async function composeVideo(backgroundPath, audioPath, assPath, outputDir, optio
     filterComplex = [vFilter, ';', buildVoiceOnlyAudioChain(audioLabel, TD)].join('');
 
     args = ['-hide_banner', '-y'];
-    if (hookClipPath) args.push('-i', hookClipPath);
     for (const p of bgList) {
       args.push('-stream_loop', '-1', '-i', p);
     }

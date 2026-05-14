@@ -63,6 +63,26 @@ function isMysteryColorGradeOn() {
   return isTruthyEnv('MYSTERY_COLOR_GRADE', true);
 }
 
+/** 첫 배경 클립과 마지막 클립을 같게 해 영상만으로 비주얼 북엔드. `VIDEO_BOOKEND_REPEAT_FIRST=0` 으로 끔. */
+function isVideoBookendRepeatFirstOn() {
+  return isTruthyEnv('VIDEO_BOOKEND_REPEAT_FIRST', true);
+}
+
+/**
+ * Pexels 배경 경로에 첫 클립 재등장 북엔드 적용 (파일 존재 여부는 호출측에서 검증).
+ * - 1개 → [a, a]
+ * - 2개 → [a, b, a]
+ * - 3개 이상 → 마지막만 첫 경로로 교체 → [a, b, ..., a]
+ */
+function applyBookendBackgroundPaths(paths) {
+  if (!paths || paths.length === 0) return paths;
+  const p = [...paths];
+  if (p.length === 1) return [p[0], p[0]];
+  if (p.length === 2) return [p[0], p[1], p[0]];
+  p[p.length - 1] = p[0];
+  return p;
+}
+
 module.exports = {
   isAudioLoudnormOn,
   isKenBurnsOn,
@@ -74,4 +94,6 @@ module.exports = {
   loudnormTP,
   loudnormLRA,
   isMysteryColorGradeOn,
+  isVideoBookendRepeatFirstOn,
+  applyBookendBackgroundPaths,
 };
