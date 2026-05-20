@@ -1,14 +1,8 @@
-# 미스터리/괴담 — 매일 UTC 12:00 (한국 21:00 / 미국 동부 08:00)
+# 미스터리/괴담 — 스케줄 자동 실행 비활성화됨 (다시 돌리려면 on.schedule 복구)
 name: Mystery Pipeline
 
 on:
-  schedule:
-    - cron: '17 12 * * *' # UTC 12:17
-    - cron: '43 15 * * *' # UTC 15:43
-    - cron: '7 18 * * *' # UTC 18:07
-    - cron: '31 21 * * *' # UTC 21:31
-    - cron: '53 00 * * *' # UTC 00:53
-  workflow_dispatch: # 수동 실행용
+  workflow_dispatch: # 수동 실행만
 
 concurrency:
   group: pipeline-mystery
