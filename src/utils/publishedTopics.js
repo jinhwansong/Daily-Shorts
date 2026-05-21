@@ -64,6 +64,8 @@ async function insertPublishedTopicRow(client, row) {
     topic_key: row.topicKey,
     video_id: row.videoId ?? null,
     raw_topic: row.rawTopic ?? null,
+    hook_first_line: row.hookFirstLine ?? null,
+    thumbnail_line: row.thumbnailLine ?? null,
   };
   const { error } = await client.from('published_topics').insert([payload]);
   if (error) {
@@ -73,6 +75,23 @@ async function insertPublishedTopicRow(client, row) {
 
 function getDedupClient() {
   return getSupabaseClient();
+}
+
+/**
+ * 각본에서 첫 비어 있지 않은 줄. 롱폼 `[COLD_OPEN]` 같은 섹션 헤더는 건너뜀.
+ * @param {string | null | undefined} script
+ * @returns {string | null}
+ */
+function extractHookFirstLine(script) {
+  if (typeof script !== 'string' || !script.trim()) return null;
+  const lines = script.split(/\r?\n/);
+  for (const raw of lines) {
+    const t = raw.trim();
+    if (!t) continue;
+    if (/^\[[A-Z_]+\]$/.test(t)) continue;
+    return t.length > 4000 ? t.slice(0, 4000) : t;
+  }
+  return null;
 }
 
 async function resolveTopicForUpload(genreKey, candidateTopic) {
@@ -114,12 +133,18 @@ async function resolveTopicForUpload(genreKey, candidateTopic) {
   return null;
 }
 
-async function recordPublishedTopic({ genreKey, topic, videoId }) {
+async function recordPublishedTopic({ genreKey, topic, videoId, script, thumbnailLine }) {
   const client = getDedupClient();
   if (!client) return;
 
   const topicKey = normalizeTopicKey(topic);
   if (!topicKey) return;
+
+  const hookFirstLine = extractHookFirstLine(script);
+  const thumb =
+    thumbnailLine != null && String(thumbnailLine).trim()
+      ? String(thumbnailLine).trim().slice(0, 2000)
+      : null;
 
   try {
     await insertPublishedTopicRow(client, {
@@ -127,6 +152,8 @@ async function recordPublishedTopic({ genreKey, topic, videoId }) {
       topicKey,
       videoId: videoId ?? null,
       rawTopic: topic,
+      hookFirstLine: hookFirstLine || null,
+      thumbnailLine: thumb,
     });
   } catch (e) {
     console.error(`[Supabase dedup] recordPublishedTopic: ${e.message}`);
@@ -143,4 +170,5 @@ module.exports = {
   insertPublishedTopicRow,
   resolveTopicForUpload,
   recordPublishedTopic,
+  extractHookFirstLine,
 };

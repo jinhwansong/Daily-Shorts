@@ -12,7 +12,8 @@
     "longform-phase1": "node src/longformPhase1.js --genre=mystery-long",
     "longform-phase2": "node src/longformPhase2.js",
     "run-once": "node src/index.js --run-once",
-    "thumbnail-test": "node src/video/thumbnailGenerator.js"
+    "thumbnail-test": "node src/video/thumbnailGenerator.js",
+    "fill-review-topics": "node scripts/fillReviewTopics.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",

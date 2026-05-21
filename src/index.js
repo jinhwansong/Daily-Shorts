@@ -256,6 +256,8 @@ async function runPipeline(topic, genreKey) {
     genreKey,
     topic: currentTopic,
     videoId,
+    script,
+    thumbnailLine: metadata.thumbnailLine,
   });
 
   const result = { jobId, genreKey, topic: currentTopic, metadata, videoId, videoUrl };
@@ -361,7 +363,7 @@ async function runLongformPipeline(topic, genreKey) {
   const { videoId, videoUrl } = await uploadVideo(finalPath, metadata, genreKey);
   await setThumbnail(videoId, thumbnailPath, genreKey);
 
-  await recordPublishedTopic({ genreKey, topic, videoId });
+  await recordPublishedTopic({ genreKey, topic, videoId, script, thumbnailLine: metadata.thumbnailLine });
 
   if (savedPrivacy !== undefined) process.env.YOUTUBE_PRIVACY_STATUS = savedPrivacy;
   else delete process.env.YOUTUBE_PRIVACY_STATUS;

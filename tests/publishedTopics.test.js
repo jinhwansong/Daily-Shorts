@@ -5,6 +5,7 @@ const {
   isSupabaseDedupConfigured,
   hasRecentPublishedDuplicate,
   insertPublishedTopicRow,
+  extractHookFirstLine,
 } = require('../src/utils/publishedTopics');
 
 function makeSelectFake(rows, capture) {
@@ -68,4 +69,32 @@ test('insertPublishedTopicRow sends genre_key and topic_key', async () => {
   assert.strictEqual(captured[0][0].genre_key, 'mystery');
   assert.strictEqual(captured[0][0].topic_key, 'dyatlov pass');
   assert.strictEqual(captured[0][0].video_id, 'vid123');
+  assert.strictEqual(captured[0][0].hook_first_line, null);
+  assert.strictEqual(captured[0][0].thumbnail_line, null);
+});
+
+test('insertPublishedTopicRow sends hook_first_line and thumbnail_line', async () => {
+  const captured = [];
+  const client = makeInsertFake(captured);
+  await insertPublishedTopicRow(client, {
+    genreKey: 'mystery',
+    topicKey: 'x',
+    videoId: 'v',
+    rawTopic: 'topic',
+    hookFirstLine: 'First line of narration.',
+    thumbnailLine: 'Thumb text',
+  });
+  assert.strictEqual(captured[0][0].hook_first_line, 'First line of narration.');
+  assert.strictEqual(captured[0][0].thumbnail_line, 'Thumb text');
+});
+
+test('extractHookFirstLine: first non-empty line', () => {
+  assert.strictEqual(extractHookFirstLine('  \nHello world.\nNext'), 'Hello world.');
+});
+
+test('extractHookFirstLine: skips [SECTION] headers', () => {
+  assert.strictEqual(
+    extractHookFirstLine('[COLD_OPEN]\n\nThe night was cold.'),
+    'The night was cold.'
+  );
 });
