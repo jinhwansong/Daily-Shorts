@@ -1,8 +1,10 @@
-# 미스터리/괴담 — 스케줄 자동 실행 비활성화됨 (다시 돌리려면 on.schedule 복구)
+# 미스터리/괴담 — 매일 1편 (UTC 12:17 ≈ KST 21:17)
 name: Mystery Pipeline
 
 on:
-  workflow_dispatch: # 수동 실행만
+  schedule:
+    - cron: '17 12 * * *'
+  workflow_dispatch:
 
 concurrency:
   group: pipeline-mystery
