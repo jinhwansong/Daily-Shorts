@@ -61,7 +61,7 @@ async function runPipeline(topic, genreKey) {
   }
 
   let script = null;
-  let pipelineContext = { wikiContext: undefined, factBullets: undefined, wikiResult: undefined };
+  let pipelineContext = { wikiContext: undefined, wikiResult: undefined };
 
   for (let attempt = 1; attempt <= 3 && !script; attempt++) {
     if (attempt > 1) {
@@ -76,20 +76,23 @@ async function runPipeline(topic, genreKey) {
     console.log(`\n[${genre.label}] Topic: ${currentTopic}`);
 
     let scriptOptions = {};
-    if (isWikiContextEnabled()) {
-      const wiki = await fetchWikipediaContext(currentTopic);
-      if (wiki) {
-        console.log(`  [Wiki] ${wiki.title} — ${wiki.url}`);
-        fs.writeFileSync(
-          path.join(outputDir, 'wikipedia_context.txt'),
-          `${wiki.title}\n${wiki.url}\n\n${wiki.text}`
-        );
-      } else {
-        console.log('  [Wiki] (no en.wikipedia article to ground — script without extract)');
-      }
-      scriptOptions.wikiContext = wiki ? wiki.text : undefined;
-      if (wiki) scriptOptions.wikiResult = wiki;
+    if (!isWikiContextEnabled()) {
+      console.warn('  [Wiki] WIKI_CONTEXT 비활성 — mystery 숏은 Wikipedia 필수, 스킵');
+      continue;
     }
+
+    const wiki = await fetchWikipediaContext(currentTopic);
+    if (!wiki?.text) {
+      console.warn('  [Wiki] English Wikipedia 기사 없음 — 스킵');
+      continue;
+    }
+    console.log(`  [Wiki] ${wiki.title} — ${wiki.url}`);
+    fs.writeFileSync(
+      path.join(outputDir, 'wikipedia_context.txt'),
+      `${wiki.title}\n${wiki.url}\n\n${wiki.text}`
+    );
+    scriptOptions.wikiContext = wiki.text;
+    scriptOptions.wikiResult = wiki;
 
     if (isShortsFactsStepEnabled()) {
       const factBullets = await generateShortsFactBullets(
@@ -99,79 +102,73 @@ async function runPipeline(topic, genreKey) {
       );
       scriptOptions.factBullets = factBullets;
       fs.writeFileSync(path.join(outputDir, 'shorts_fact_bullets.txt'), factBullets);
-      console.log('  [Facts] haiku fact-bullet pass (see output/.../shorts_fact_bullets.txt)');
+      console.log('  [Facts] optional summary only (not used for validation)');
     }
 
     pipelineContext = {
       wikiContext: scriptOptions.wikiContext,
-      factBullets: scriptOptions.factBullets,
       wikiResult: scriptOptions.wikiResult,
     };
-    script = await generateScript(currentTopic, genreKey, scriptOptions);
+
+    let draftScript = await generateScript(currentTopic, genreKey, scriptOptions);
+    if (!draftScript) continue;
+
+    const claimMaxAttempts = 2;
+    for (let cg = 1; cg <= claimMaxAttempts; cg++) {
+      const gate = runClaimGate({
+        script: draftScript,
+        wikiText: pipelineContext.wikiContext,
+      });
+      fs.writeFileSync(
+        path.join(outputDir, 'claim_gate_audit.json'),
+        JSON.stringify(gate, null, 2)
+      );
+
+      if (gate.skipped || gate.passed) {
+        if (!gate.skipped) {
+          const n = gate.claims?.length || 0;
+          console.log(`  [ClaimGate] 통과${n ? ` (strict claims: ${n})` : ''}`);
+        }
+        script = draftScript;
+        break;
+      }
+
+      console.warn(`  [ClaimGate] 실패 (${gate.failures.length}건)`);
+      for (const f of gate.failures) {
+        console.warn(`    - [${f.source}] ${f.claim} → ${f.reason}`);
+      }
+
+      if (gate.mode === 'warn') {
+        console.warn('  [ClaimGate] warn 모드 — 계속 진행');
+        script = draftScript;
+        break;
+      }
+
+      if (cg >= claimMaxAttempts) {
+        console.warn('  [ClaimGate] 재시도 후에도 실패 — 다른 토픽 시도');
+        draftScript = null;
+        break;
+      }
+
+      console.warn('  [ClaimGate] 스크립트 1회 재생성');
+      draftScript = await generateScript(currentTopic, genreKey, {
+        wikiContext: pipelineContext.wikiContext,
+        wikiResult: pipelineContext.wikiResult,
+        factBullets: scriptOptions.factBullets,
+        claimGateFeedback: gate.failures
+          .map((f) => `"${f.claim}" — ${f.reason}`)
+          .join('\n'),
+      });
+      if (!draftScript) break;
+    }
   }
 
   if (!script) {
-    console.error('  [Topic] 3회 시도 후 유효 토픽 없음 — 이번 실행 건너뜀');
+    console.error('  [Topic] 3회 시도 후 유효 스크립트 없음 — 이번 실행 건너뜀');
     return null;
   }
 
-  let metadata = null;
-  const claimMaxAttempts = 2;
-  for (let cg = 1; cg <= claimMaxAttempts; cg++) {
-    metadata = await generateMetadata(script, currentTopic, genreKey);
-
-    const gate = runClaimGate({
-      script,
-      title: metadata.title,
-      wikiText: pipelineContext.wikiContext,
-      factBullets: pipelineContext.factBullets,
-    });
-    fs.writeFileSync(path.join(outputDir, 'claim_gate_audit.json'), JSON.stringify(gate, null, 2));
-
-    if (gate.skipped || gate.passed) {
-      if (!gate.skipped) {
-        const n = gate.claims?.length || 0;
-        console.log(`  [ClaimGate] 통과${n ? ` (strict claims: ${n})` : ''}`);
-      }
-      break;
-    }
-
-    console.warn(`  [ClaimGate] 실패 (${gate.failures.length}건)`);
-    for (const f of gate.failures) {
-      console.warn(`    - [${f.source}] ${f.claim} → ${f.reason}`);
-    }
-
-    if (gate.mode === 'warn') {
-      console.warn('  [ClaimGate] warn 모드 — 계속 진행');
-      break;
-    }
-
-    if (cg >= claimMaxAttempts) {
-      console.error('  [ClaimGate] 재시도 후에도 실패 — 이번 실행 건너뜀');
-      return {
-        skipped: true,
-        reason: 'claim_gate_failed',
-        genreKey,
-        topic: currentTopic,
-        claimGate: gate,
-      };
-    }
-
-    console.warn('  [ClaimGate] 스크립트 1회 재생성');
-    script = await generateScript(currentTopic, genreKey, {
-      wikiContext: pipelineContext.wikiContext,
-      wikiResult: pipelineContext.wikiResult,
-      factBullets: pipelineContext.factBullets,
-      claimGateFeedback: gate.failures
-        .map((f) => `[${f.source}] "${f.claim}" — ${f.reason}`)
-        .join('\n'),
-    });
-    if (!script) {
-      console.error('  [ClaimGate] 스크립트 재생성 실패 — 건너뜀');
-      return { skipped: true, reason: 'claim_gate_script_regen_failed', genreKey, topic: currentTopic };
-    }
-  }
-
+  const metadata = await generateMetadata(script, currentTopic, genreKey);
   fs.writeFileSync(path.join(outputDir, 'script.txt'), script);
   fs.writeFileSync(path.join(outputDir, 'metadata.json'), JSON.stringify(metadata, null, 2));
   console.log(`  Title: ${metadata.title}`);

@@ -1,5 +1,6 @@
 const fs = require('fs');
 const { getGenre, DEFAULT_GENRE } = require('../genres');
+const { normalizeTopicKey } = require('../utils/topicKey');
 const { scriptUserMessageAddon, metadataPromptAddon } = require('../utils/contentIntensity');
 const { completeLlm, completeLlmLongform, getProvider, shortsScriptModel } = require('./scriptLlm');
 
@@ -39,6 +40,17 @@ function loadPrompt(genreKey) {
 function validateTopicWithWiki(topic, wikiResult) {
   if (!wikiResult || !wikiResult.found) {
     return { valid: false, score: 0, reason: 'no_wiki' };
+  }
+
+  const topicNorm = normalizeTopicKey(topic);
+  const wikiTitleNorm = normalizeTopicKey(wikiResult.title || '');
+  if (
+    wikiTitleNorm &&
+    (topicNorm === wikiTitleNorm ||
+      topicNorm.includes(wikiTitleNorm) ||
+      wikiTitleNorm.includes(topicNorm))
+  ) {
+    return { valid: true, score: 5, reason: 'wiki_title_match' };
   }
 
   let score = 0;
@@ -103,9 +115,9 @@ function validateTopicWithWiki(topic, wikiResult) {
   };
 }
 
-/** 하이쿠 1회: 위키+토픽에서만 불릿 추출 → 본문은 불릿+위키 밖의 구체 주장 금지 */
+/** 기본 꺼짐 — Haiku fact bullets는 검증 소스가 아님 (SHORTS_FACTS_STEP=1 이면 선택적 맥락만) */
 function isShortsFactsStepEnabled() {
-  return (process.env.SHORTS_FACTS_STEP || '1').toString().trim() !== '0';
+  return (process.env.SHORTS_FACTS_STEP || '0').toString().trim() !== '0';
 }
 
 /**
@@ -185,8 +197,8 @@ async function generateScript(topic, genreKey = DEFAULT_GENRE, options = {}) {
   const wikiBlock = wiki
     ? `
 
-## English Wikipedia (grounding)
-Use for names, years, places, legal outcomes, and "whether a body was found" only as stated here. It may be incomplete. If something is not here, do not add it. **Never** invent: years, "first" claims, number of trials, body/remains in a location, unless they appear in the fact bullets and/or this block.
+## English Wikipedia (ONLY trusted source)
+Use for names, years, places, legal outcomes, and "whether a body was found" only as stated here. It may be incomplete. If something is not here, do not add it. **Never** invent: years, "first" claims, number of trials, body/remains in a location.
 
 ${wiki}
 `
@@ -195,10 +207,8 @@ ${wiki}
   const factBlock = fact
     ? `
 
-## Fact bullets (HARD) + KEY ANCHORS / AVOID
-- Every **specific** claim in the script (dates, names, legal outcomes, body/remains, trial counts, "first" superlatives) must match what is allowed in the Wikipedia block and/or the bullet lines. If a line says "do not say X", never say X.
-- The **KEY ANCHORS** line lists phrases you must work into the **first half** of the script in clear, plain sentences (not all hidden inside questions). That gives viewers something searchable before the unknown lands.
-- Follow **AVOID** literally.
+## Optional summary (NOT authoritative — Wikipedia above is the only source of truth)
+Do not treat these notes as facts. If they conflict with Wikipedia, ignore them.
 
 ${fact}
 `
@@ -216,9 +226,9 @@ ${fact}
       ? `
 
 ## CLAIM GATE REWRITE (required)
-Your previous script/title was rejected because these strict claims lacked Wikipedia/fact-bullet support or contradicted AVOID:
+Your previous script was rejected because these strict claims were not supported by the Wikipedia text:
 ${String(options.claimGateFeedback).trim()}
-Remove or rephrase unsupported superlatives and legal/status claims. Only assert what the sources allow.`
+Remove or rephrase unsupported superlatives and legal/status claims. Only assert what Wikipedia allows.`
       : '';
 
   const systemPrompt = loadPrompt(genreKey);
@@ -227,13 +237,13 @@ Remove or rephrase unsupported superlatives and legal/status claims. Only assert
     user: `Topic: ${topic}${wikiBlock}${factBlock}${noWikiWarning}${claimGateBlock}${scriptUserMessageAddon()}
 
 SOURCE DISCIPLINE — apply before writing a single word:
-Before writing the script, mentally note the specific years, names, and numbers that appear in the Wikipedia block and fact bullets above. You are ONLY allowed to use those exact values. If a year, name, or number is not visible in the sources above, do NOT write it — write vaguely instead (e.g. "decades later", "in the early twentieth century", "a significant sum") or omit it.
+Before writing the script, mentally note the specific years, names, and numbers that appear in the Wikipedia block above. You are ONLY allowed to use those exact values. If a year, name, or number is not visible in Wikipedia, do NOT write it — write vaguely instead (e.g. "decades later", "in the early twentieth century", "a significant sum") or omit it.
 
 BALANCED GROUNDING (read carefully):
-(1) Do **not** invent or imply facts, dates, or outcomes that are not in the Wikipedia and fact bullets above. No extra names, years, or "body found" if not allowed.
-(2) You **must** still sound like a real Short, not a hollow teaser: at least **two** concrete, allowed details in the first half—short declarative sentences, not only inside a final question. If KEY ANCHORS is present, weave those phrases in early. If there is no fact-bullet section and no Wikipedia, use only the person/case name and the general nature of the mystery — no specific numbers.
-(3) Do not write a script that is *only* vague atmosphere + one rhetorical question. The ending can ask an open question, but the middle should add **at least one more** allowed beat (documented paradox, reversal, or unknown—only if in the sources).
-(4) If sources are thin, anchor with the case/victim from the topic; keep sentences cold and fast; the closing question should point at a **documented** gap, not a made-up hook.
+(1) Do **not** invent or imply facts, dates, or outcomes that are not in the Wikipedia block above. No extra names, years, or "body found" if Wikipedia does not say so.
+(2) You **must** still sound like a real Short, not a hollow teaser: at least **two** concrete, allowed details in the first half—short declarative sentences, not only inside a final question. Use names, years, or places that appear in Wikipedia.
+(3) Do not write a script that is *only* vague atmosphere + one rhetorical question. The ending can ask an open question, but the middle should add **at least one more** allowed beat (documented paradox, reversal, or unknown—only if in Wikipedia).
+(4) If Wikipedia is thin, anchor with the case/victim from the topic; keep sentences cold and fast; the closing question should point at a **documented** gap, not a made-up hook.
 (5) English only; respect the word limit for Shorts.
 (6) BOOKEND: The closing question or paradox must explicitly recall one concrete element from your opening sentences—the same evidence, sound, place, object, or last-known detail—not a new topic introduced only at the end.`,
     maxTokens: 280,
