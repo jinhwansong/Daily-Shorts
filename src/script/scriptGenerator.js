@@ -1,7 +1,7 @@
 const fs = require('fs');
 const { getGenre, DEFAULT_GENRE } = require('../genres');
 const { scriptUserMessageAddon, metadataPromptAddon } = require('../utils/contentIntensity');
-const { completeLlm, completeLlmLongform } = require('./scriptLlm');
+const { completeLlm, completeLlmLongform, getProvider, shortsScriptModel } = require('./scriptLlm');
 
 /**
  * 쇼츠 TTS 길이 상한(단어). mystery 등 숏폼만 적용 — env SHORTS_MAX_WORDS 로 조정 가능.
@@ -237,6 +237,8 @@ BALANCED GROUNDING (read carefully):
 (5) English only; respect the word limit for Shorts.
 (6) BOOKEND: The closing question or paradox must explicitly recall one concrete element from your opening sentences—the same evidence, sound, place, object, or last-known detail—not a new topic introduced only at the end.`,
     maxTokens: 280,
+    model: shortsScriptModel(getProvider()),
+    llmRole: 'script',
   });
   const wcBefore = raw.split(/\s+/).filter(Boolean).length;
   const clamped = clampShortsScript(raw, SHORTS_MAX_WORDS);

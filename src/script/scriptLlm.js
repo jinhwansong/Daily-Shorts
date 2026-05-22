@@ -35,12 +35,26 @@ function longformModel(provider) {
   return defaultModel(provider);
 }
 
-let _logged = false;
+/** Shorts TTS 각본 전용 — fact bullets·메타·토픽보다 강한 모델 (기본 Sonnet) */
+function shortsScriptModel(provider) {
+  const explicit =
+    (process.env.SCRIPT_LLM_SCRIPT_MODEL && String(process.env.SCRIPT_LLM_SCRIPT_MODEL).trim()) ||
+    (process.env.CLAUDE_SCRIPT_MODEL && String(process.env.CLAUDE_SCRIPT_MODEL).trim()) ||
+    '';
+  if (explicit) return explicit;
+  if (provider === 'anthropic') {
+    return 'claude-sonnet-4-5-20250929';
+  }
+  return defaultModel(provider);
+}
 
-function logOnce(provider, model) {
-  if (_logged) return;
-  _logged = true;
-  console.log(`  [LLM] 스크립트·토픽: ${provider} / ${model}`);
+const _loggedRoles = new Set();
+
+function logModelOnce(role, provider, model) {
+  if (_loggedRoles.has(role)) return;
+  _loggedRoles.add(role);
+  const label = role === 'script' ? '스크립트' : 'fact·meta·topic';
+  console.log(`  [LLM] ${label}: ${provider} / ${model}`);
 }
 
 const anthropicClient = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -75,7 +89,8 @@ function geminiExtractText(response) {
 async function completeLlm(p) {
   const provider = getProvider();
   const model = p.model || defaultModel(provider);
-  logOnce(provider, model);
+  const role = p.llmRole === 'script' ? 'script' : 'helper';
+  logModelOnce(role, provider, model);
 
   if (provider === 'anthropic') {
     if (!process.env.ANTHROPIC_API_KEY) {
@@ -144,4 +159,5 @@ module.exports = {
   getProvider,
   defaultModel,
   longformModel,
+  shortsScriptModel,
 };
