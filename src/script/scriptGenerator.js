@@ -1,7 +1,7 @@
 const fs = require('fs');
 const { getGenre, DEFAULT_GENRE } = require('../genres');
 const { scriptUserMessageAddon, metadataPromptAddon } = require('../utils/contentIntensity');
-const { completeLlm, completeLlmLongform, completeLlmFactcheck } = require('./scriptLlm');
+const { completeLlm, completeLlmLongform } = require('./scriptLlm');
 
 /**
  * 쇼츠 TTS 길이 상한(단어). mystery 등 숏폼만 적용 — env SHORTS_MAX_WORDS 로 조정 가능.
@@ -104,16 +104,6 @@ function validateTopicWithWiki(topic, wikiResult) {
   };
 }
 
-/** 소스 문장에 번호 부여 — 팩트체크 시 SUPPORT가 실제 문장을 가리키게 함 */
-function numberSentences(text) {
-  return String(text || '')
-    .split(/(?<=[.!?])\s+/)
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .map((s, i) => `[${i + 1}] ${s}`)
-    .join('\n');
-}
-
 /** 하이쿠 1회: 위키+토픽에서만 불릿 추출 → 본문은 불릿+위키 밖의 구체 주장 금지 */
 function isShortsFactsStepEnabled() {
   return (process.env.SHORTS_FACTS_STEP || '1').toString().trim() !== '0';
@@ -150,131 +140,6 @@ ${wikiBlock}
 `,
   });
   return raw.trim();
-}
-
-/**
- * 스크립트에서 4자리 연도(1500-2029) 집합을 추출 (빠른 사전 검사용)
- */
-function extractYears(text) {
-  return new Set((String(text || '')).match(/\b(1[5-9]\d{2}|20[012]\d)\b/g) || []);
-}
-
-/**
- * 소스에 없는 연도를 명시적으로 교체하는 최후 수단 패스
- */
-async function forceFixBadYears(script, badYears, sourceText) {
-  console.warn(`  [Fact-check] 강제 연도 수정 패스: ${badYears.join(', ')}`);
-  const fixed = await completeLlmFactcheck({
-    maxTokens: 300,
-    user: `The script contains years that are CONFIRMED wrong (not in the sources): ${badYears.join(', ')}.
-
-VERIFIED SOURCES:
-${sourceText.slice(0, 4000)}
-
-SCRIPT:
-${script}
-
-For each wrong year:
-- If the correct year is in sources, use it.
-- If no correct year is findable in sources, remove the year or rephrase without a specific year (e.g. "decades ago", "in the early twentieth century").
-- Do NOT add any year not in sources.
-
-Output ONLY the corrected script. No labels, no explanation.`,
-  });
-  return clampShortsScript(fixed.trim(), SHORTS_MAX_WORDS);
-}
-
-/**
- * 소스(위키+불릿)를 기준으로 스크립트의 구체적 주장을 검증·수정.
- *
- * 핵심 원칙:
- *  - 소스가 없으면 즉시 반환(비용 0)
- *  - 정규식으로 연도를 먼저 하드체크 → 소스에 없는 연도는 LLM 결과와 무관하게 강제 수정
- *  - LLM 팩트체크는 citation-grounded: 각 주장마다 소스 문장을 직접 인용하게 함
- *    → 인용 못 하면 NOT_FOUND로 처리, 이 경우 PASS 불가
- */
-async function factCheckAndFixScript(script, wikiText, factBullets) {
-  const sourceText = [wikiText, factBullets].filter(Boolean).join('\n');
-  if (!sourceText.trim()) return script;
-
-  // 1단계: 정규식 하드체크 — LLM보다 먼저, LLM이 무시해도 재수행
-  const scriptYears = extractYears(script);
-  const sourceYears = extractYears(sourceText);
-  const badYears = [...scriptYears].filter((y) => !sourceYears.has(y));
-  if (badYears.length) {
-    console.warn(`  [Fact-check] 소스에 없는 연도 감지: ${badYears.join(', ')}`);
-  }
-
-  // 2단계: citation-grounded LLM 검증
-  console.log('  [Fact-check] 사실 검증 중 (citation-grounded)...');
-
-  const hardYearWarning = badYears.length
-    ? `\n⚠ HARD FAIL — regex confirmed these years are NOT in sources: ${badYears.join(', ')}. You MUST fix them. Do NOT output PASS.\n`
-    : '';
-
-  const numberedSource = numberSentences(sourceText.slice(0, 5000));
-
-  const raw = await completeLlmFactcheck({
-    maxTokens: 520,
-    user: `You are a citation-grounded fact-checker. Work through the steps below.
-
-VERIFIED SOURCES (each line starts with a sentence number [n] — you may ONLY cite these):
-${numberedSource}
-
-SCRIPT TO CHECK:
-${script}
-${hardYearWarning}
---- STEP 1: Identify every specific, checkable claim in the SCRIPT ---
-List each as:
-CLAIM: <the claim> | SUPPORT: [sentence_number] <verbatim substring copied from that numbered line only>
-or CLAIM: <the claim> | SUPPORT: NOT_FOUND
-
-Rules for SUPPORT:
-- MUST start with [n] matching a line in VERIFIED SOURCES above, then a substring that actually appears on that same line.
-- If you cannot cite a real [n] and substring, use NOT_FOUND (do not invent sentence numbers).
-
-Types to check: years/decades, people's names, place names, monetary amounts, "body found/not found", convictions/acquittals, "first"/"only"/"largest" superlatives.
-
---- STEP 2: Count NOT_FOUND items ---
-VERDICT: PASS   ← only if every CLAIM has a valid [n] SUPPORT (not NOT_FOUND) AND no ⚠ HARD FAIL above
-VERDICT: FAIL   ← if any NOT_FOUND, invalid/missing [n], or ⚠ HARD FAIL is present
-
---- STEP 3: Output ---
-If VERDICT: PASS → output exactly: ALL_CORRECT
-If VERDICT: FAIL → output the corrected script only (no labels, no preamble).
-  Fix rules: replace each NOT_FOUND claim with correct value from sources; if no correct value, rephrase vaguely or remove; keep voice and word count close to original; do NOT add new specific facts.`,
-  });
-
-  const result = raw.trim();
-
-  // 출력에서 STEP 3 이후 결과만 추출 (chain-of-thought 분리)
-  let finalOutput = result;
-  const step3Match = result.match(/STEP\s*3[^:\n]*:?\s*\n+([\s\S]+)$/i);
-  if (step3Match) finalOutput = step3Match[1].trim();
-
-  const isAllCorrect = /^ALL_CORRECT/i.test(finalOutput);
-
-  // LLM이 PASS라고 해도 하드체크가 잡은 연도가 있으면 강제 수정
-  if (isAllCorrect && badYears.length) {
-    console.warn('  [Fact-check] LLM이 PASS했지만 연도 이상 — 강제 수정');
-    return forceFixBadYears(script, badYears, sourceText);
-  }
-
-  if (isAllCorrect) {
-    console.log('  [Fact-check] 이상 없음 ✓');
-    return script;
-  }
-
-  // CLAIM: 라인이 너무 많으면 분석만 출력된 것 (스크립트 추출 실패)
-  const claimLineCount = (finalOutput.match(/^CLAIM:/gm) || []).length;
-  if (claimLineCount > 2) {
-    console.warn('  [Fact-check] 스크립트 파싱 실패');
-    if (badYears.length) return forceFixBadYears(script, badYears, sourceText);
-    return script;
-  }
-
-  console.warn('  [Fact-check] 수정 적용됨');
-  return clampShortsScript(finalOutput, SHORTS_MAX_WORDS);
 }
 
 /**
@@ -373,9 +238,7 @@ BALANCED GROUNDING (read carefully):
     );
   }
 
-  // 종합 팩트-체크: 소스가 있으면 연도·이름·결과 등 모든 구체적 주장 검증
-  const checked = await factCheckAndFixScript(clamped, wiki, fact);
-  return checked;
+  return clamped;
 }
 
 async function generateMetadata(script, topic, genreKey = DEFAULT_GENRE) {

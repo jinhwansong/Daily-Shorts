@@ -1,8 +1,6 @@
 /**
  * 스크립트·토픽·메타데이터 생성용 텍스트 LLM 라우터.
  * SCRIPT_LLM_PROVIDER=anthropic|openai|google (기본 anthropic)
- *
- * Shorts 팩트체크(completeLlmFactcheck)는 항상 OpenAI gpt-4o-mini — CI/로컬 env 혼선 방지.
  */
 const Anthropic = require('@anthropic-ai/sdk');
 const OpenAI = require('openai');
@@ -45,12 +43,6 @@ function logOnce(provider, model) {
   console.log(`  [LLM] 스크립트·토픽: ${provider} / ${model}`);
 }
 
-function logFactcheck(model) {
-  console.log(`  [LLM] 팩트체크: openai / ${model}`);
-}
-
-/** Shorts 사실 검증(도메인·연도) 전용. CI/로컬에서 모델 혼선 없이 고정. */
-const FACTCHECK_OPENAI_MODEL = 'gpt-4o-mini';
 const anthropicClient = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 let openaiClient;
 let googleGenAI;
@@ -146,39 +138,10 @@ async function completeLlmLongform(p) {
   return completeLlm({ ...p, model: p.model || longformModel(prov) });
 }
 
-/**
- * Shorts 팩트체크·연도 수정 전용. 항상 OpenAI gpt-4o-mini(고정) — GitHub/로컬 env 로 모델이 바뀌지 않음.
- * OPENAI_API_KEY 필요(스크립트 생성이 Anthropic only여도 TTS/팩트체크에 쓰는 키와 동일).
- */
-async function completeLlmFactcheck(p) {
-  if (!process.env.OPENAI_API_KEY) {
-    throw new Error(
-      'OPENAI_API_KEY is required for Shorts fact-checking (OpenAI gpt-4o-mini, fixed)'
-    );
-  }
-  const model = p.model || FACTCHECK_OPENAI_MODEL;
-  logFactcheck(model);
-
-  const messages = [];
-  if (p.system) messages.push({ role: 'system', content: p.system });
-  messages.push({ role: 'user', content: p.user });
-  const r = await getOpenAI().chat.completions.create({
-    model,
-    messages,
-    max_tokens: p.maxTokens,
-    temperature: 0.1,
-  });
-  const text = r.choices[0]?.message?.content;
-  if (!text) throw new Error('OpenAI factcheck: empty response');
-  return String(text).trim();
-}
-
 module.exports = {
   completeLlm,
   completeLlmLongform,
-  completeLlmFactcheck,
   getProvider,
   defaultModel,
   longformModel,
-  FACTCHECK_OPENAI_MODEL,
 };
