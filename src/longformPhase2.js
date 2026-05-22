@@ -29,9 +29,8 @@ const {
 const { generateSubtitles, srtToAss } = require('./video/subtitleGenerator');
 const { composeLongformVideo } = require('./video/longformVideoComposer');
 const { parseScriptSections } = require('./video/dalleImageGenerator');
-const { generateThumbnail, pickLongformThumbnailHook } = require('./video/thumbnailGenerator');
 const { fetchLandscapeClips } = require('./video/longformVideoFetcher');
-const { uploadVideo, setThumbnail } = require('./upload/youtubeUploader');
+const { uploadVideo } = require('./upload/youtubeUploader');
 const { recordPublishedTopic } = require('./utils/publishedTopics');
 const { runCopyrightGuard } = require('./utils/copyrightGuard');
 const { getAttributionFooter } = require('./utils/attributionFooter');
@@ -182,24 +181,15 @@ async function runPhase2() {
         : 1;
   }
 
-  // 썸네일 훅 (우하단 짧은 문구)
-  const hookText = pickLongformThumbnailHook(metadata, script);
-
-  // FFmpeg 합성 + 썸네일 병렬
   const tFFmpeg = Date.now();
   console.log(
     `  FFmpeg 합성 중… (섹션:${sections.length} · 이미지:${imagePaths.length} · 클립:${clipPaths.length} · imagesPerSection:${imagesPerSection})`
   );
-  const [finalPath, thumbnailPath] = await Promise.all([
-    composeLongformVideo(clipPaths, imagePaths, audioPath, assPath, outputDir, {
-      bgmPath,
-      script,
-      imagesPerSection,
-    }),
-    generateThumbnail(hookText, outputDir, genreKey, metadata.thumbnailQuery || null, {
-      layout: 'corner',
-    }),
-  ]);
+  const finalPath = await composeLongformVideo(clipPaths, imagePaths, audioPath, assPath, outputDir, {
+    bgmPath,
+    script,
+    imagesPerSection,
+  });
 
   console.log(`  FFmpeg 완료 [${elapsed(tFFmpeg)}]: ${finalPath}`);
 
@@ -208,7 +198,6 @@ async function runPhase2() {
     videoPath: clipPaths[0],
     videoPath2: null,
     audioPath,
-    thumbnailPath,
     script,
   });
 
@@ -218,9 +207,8 @@ async function runPhase2() {
   process.env.YOUTUBE_PRIVACY_STATUS = 'private';
 
   const { videoId, videoUrl } = await uploadVideo(finalPath, metadata, genreKey);
-  await setThumbnail(videoId, thumbnailPath, genreKey);
 
-  await recordPublishedTopic({ genreKey, topic, videoId, script, thumbnailLine: metadata.thumbnailLine });
+  await recordPublishedTopic({ genreKey, topic, videoId, script });
 
   if (savedPrivacy !== undefined) process.env.YOUTUBE_PRIVACY_STATUS = savedPrivacy;
   else delete process.env.YOUTUBE_PRIVACY_STATUS;

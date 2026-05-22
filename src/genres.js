@@ -30,8 +30,6 @@ Prioritize cases with a layered story: something that seems simple at first but 
       'shadow figure silhouette',
       'vintage car abandoned',
     ],
-    thumbnailColor: '#0a0a0a',
-    thumbnailAccent: '#c0392b',
     bgmDir: path.join(__dirname, '../assets/bgm/dark'),
     bgmFile: path.join(__dirname, '../assets/bgm/mystery.mp3'),
     freesoundBgmQuery: 'dark cinematic atmospheric drone mystery',
@@ -73,9 +71,6 @@ Avoid hyper-obscure local stories unknown outside that region unless they alread
       'dark water reflection',
       'shadow silhouette',
     ],
-    thumbnailColor: '#0a0a0a',
-    thumbnailAccent: '#c0392b',
-    /** 미스터리용 로컬 BGM 풀 — 이 안의 .mp3 중 하나를 무작위 (Freesound 실패 시) */
     bgmDir: path.join(__dirname, '../assets/bgm/dark'),
     /** 단일 파일 폴백 (bgmDir 이 비어 있을 때만) */
     bgmFile: path.join(__dirname, '../assets/bgm/mystery.mp3'),

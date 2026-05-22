@@ -7,7 +7,7 @@ const { normalizeFreesoundLicense } = require('../audio/freesoundBgm');
  * 파이프라인 구조상 조건이 이미 충족되어 있지만,
  * 조건이 깨진 경우(파일 누락, 외부 오디오 삽입 등) 업로드를 차단합니다.
  */
-function runCopyrightGuard(outputDir, { videoPath, videoPath2, audioPath, thumbnailPath, script }) {
+function runCopyrightGuard(outputDir, { videoPath, videoPath2, audioPath, script }) {
   const checks = [];
   const errors = [];
 
@@ -91,14 +91,6 @@ function runCopyrightGuard(outputDir, { videoPath, videoPath2, audioPath, thumbn
   const scriptPath = path.join(outputDir, 'script.txt');
   const scriptExists = fs.existsSync(scriptPath) && fs.readFileSync(scriptPath, 'utf-8').trim().length > 20;
   check('AI 생성 스크립트', scriptExists);
-
-  // 5. 썸네일: canvas 자체 생성 (thumbnail.png)
-  const thumbExists = thumbnailPath && fs.existsSync(thumbnailPath);
-  check(
-    'canvas 자체 생성 썸네일 (외부 이미지 없음)',
-    thumbExists && path.basename(thumbnailPath) === 'thumbnail.png',
-    thumbExists ? '' : '파일 없음'
-  );
 
   // 감사 로그 저장
   const audit = {

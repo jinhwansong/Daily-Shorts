@@ -4,7 +4,7 @@
   "description": "Mystery/Horror YouTube Shorts automation pipeline",
   "main": "src/index.js",
   "scripts": {
-    "test": "node --test tests/copyrightGuard.test.js tests/topicTier.test.js tests/redditTopicSource.test.js tests/wikipediaTopicSeeds.test.js tests/videoBookend.test.js tests/topicKey.test.js tests/publishedTopics.test.js tests/mysteryPromptBookend.test.js",
+    "test": "node --test tests/copyrightGuard.test.js tests/topicTier.test.js tests/wikipediaTopicSeeds.test.js tests/videoBookend.test.js tests/topicKey.test.js tests/publishedTopics.test.js tests/mysteryPromptBookend.test.js tests/claimAssertionGate.test.js",
     "dry-run": "node src/index.js --dry-run --genre=mystery",
     "mystery": "node src/index.js --run-daily --genre=mystery --count=5",
     "mystery-long": "node src/index.js --run-once --genre=mystery-long",
@@ -12,14 +12,12 @@
     "longform-phase1": "node src/longformPhase1.js --genre=mystery-long",
     "longform-phase2": "node src/longformPhase2.js",
     "run-once": "node src/index.js --run-once",
-    "thumbnail-test": "node src/video/thumbnailGenerator.js",
     "fill-review-topics": "node scripts/fillReviewTopics.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
     "@google-cloud/storage": "^7.19.0",
     "@google/genai": "^1.50.1",
-    "@napi-rs/canvas": "^0.1.53",
     "@supabase/supabase-js": "^2.105.4",
     "axios": "^1.7.0",
     "dotenv": "^16.4.0",

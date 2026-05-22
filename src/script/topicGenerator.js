@@ -4,7 +4,6 @@ const { getGenre, DEFAULT_GENRE } = require('../genres');
 const { topicPromptAddon } = require('../utils/contentIntensity');
 const { completeLlm } = require('./scriptLlm');
 const { buildTierPlan, formatTierBatchBlock } = require('./topicTier');
-const { fetchRedditSeeds } = require('./redditTopicSource');
 const { fetchWikipediaSeedTitles } = require('./wikipediaTopicSeeds');
 
 const TOPIC_HISTORY_FILE = path.join(__dirname, '../../output/topic_history.json');
@@ -72,21 +71,10 @@ function saveUsedTopics(genreKey, topics) {
   fs.writeFileSync(file, JSON.stringify(topics.slice(-200), null, 2));
 }
 
-/** 토픽 시드 상한 (Reddit·위키 공통 기본값) */
+/** 토픽 시드 상한 (위키 기본값) */
 function getTopicSeedLimit() {
-  const n = parseInt(process.env.TOPIC_SEED_LIMIT || process.env.REDDIT_SEED_LIMIT || '15', 10);
+  const n = parseInt(process.env.TOPIC_SEED_LIMIT || '15', 10);
   return Number.isFinite(n) && n > 0 ? Math.min(40, n) : 15;
-}
-
-/** reddit | wikipedia | both — 기본 reddit */
-function topicSeedSource() {
-  return (process.env.TOPIC_SEED_SOURCE || 'reddit').toLowerCase().trim();
-}
-
-/** Reddit 결과가 비었을 때 위키 시드 보충 (기본 켜짐) */
-function wikiFallbackEnabled() {
-  const v = (process.env.TOPIC_SEED_FALLBACK_WIKI ?? '1').toString().toLowerCase().trim();
-  return v !== '0' && v !== 'false';
 }
 
 /** mystery 전용: 생성 토픽이 실제로 미해결·미설명으로 남은 사건인지 모델에 강제 */
@@ -132,40 +120,8 @@ async function generateTopics(count = 1, genreKey = DEFAULT_GENRE) {
   let tierBlock = '';
   if (genreKey === 'mystery') {
     const seedLimit = getTopicSeedLimit();
-    const src = topicSeedSource();
-    let redditTitles = [];
-    let wikiTitles = [];
-
-    if (src === 'reddit' || src === 'both') {
-      redditTitles = await fetchRedditSeeds();
-    }
-    if (src === 'wikipedia') {
-      wikiTitles = await fetchWikipediaSeedTitles(seedLimit);
-    } else if (src === 'both') {
-      wikiTitles = await fetchWikipediaSeedTitles(seedLimit);
-    } else if (src === 'reddit' && redditTitles.length === 0 && wikiFallbackEnabled()) {
-      wikiTitles = await fetchWikipediaSeedTitles(seedLimit);
-    }
-
-    const seen = new Set();
-    const inspirationTitles = [];
-    for (const t of redditTitles) {
-      const k = t.toLowerCase();
-      if (!seen.has(k)) {
-        seen.add(k);
-        inspirationTitles.push(t);
-      }
-    }
-    for (const t of wikiTitles) {
-      const k = t.toLowerCase();
-      if (!seen.has(k)) {
-        seen.add(k);
-        inspirationTitles.push(t);
-      }
-      if (inspirationTitles.length >= seedLimit) break;
-    }
-
-    const capped = inspirationTitles.slice(0, seedLimit);
+    const wikiTitles = await fetchWikipediaSeedTitles(seedLimit);
+    const capped = wikiTitles.slice(0, seedLimit);
     if (capped.length > 0) {
       seedBlock = `
 TOPIC SEEDS (titles for inspiration only — verify facts via Wikipedia / reputable news; do not invent details to match a title):

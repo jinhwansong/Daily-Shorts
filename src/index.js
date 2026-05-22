@@ -20,8 +20,7 @@ const { fetchBackgroundVideo, fetchNBackgroundVideos } = require('./video/videoF
 const { generateSubtitles, srtToAss } = require('./video/subtitleGenerator');
 const { composeVideo, getAudioDuration } = require('./video/videoComposer');
 const { composeLongformVideo } = require('./video/longformVideoComposer');
-const { generateThumbnail, pickLongformThumbnailHook } = require('./video/thumbnailGenerator');
-const { uploadVideo, setThumbnail } = require('./upload/youtubeUploader');
+const { uploadVideo } = require('./upload/youtubeUploader');
 const { generateLongformScript, generateLongformMetadata } = require('./script/scriptGenerator');
 const { generateImagesForScript, estimateChapterTimestamps } = require('./video/dalleImageGenerator');
 const { fetchLandscapeClips } = require('./video/longformVideoFetcher');
@@ -39,6 +38,7 @@ const {
   isVideoBookendRepeatFirstOn,
 } = require('./utils/videoPipelineEnv');
 const { resolveTopicForUpload, recordPublishedTopic } = require('./utils/publishedTopics');
+const { runClaimGate } = require('./script/claimAssertionGate');
 
 const UPLOAD_COUNT = parseInt(process.env.DAILY_UPLOAD_COUNT || '5', 10);
 const REPO_ROOT = path.join(__dirname, '..');
@@ -61,7 +61,7 @@ async function runPipeline(topic, genreKey) {
   }
 
   let script = null;
-  let scriptOptions = {};
+  let pipelineContext = { wikiContext: undefined, factBullets: undefined, wikiResult: undefined };
 
   for (let attempt = 1; attempt <= 3 && !script; attempt++) {
     if (attempt > 1) {
@@ -75,7 +75,7 @@ async function runPipeline(topic, genreKey) {
     }
     console.log(`\n[${genre.label}] Topic: ${currentTopic}`);
 
-    scriptOptions = {};
+    let scriptOptions = {};
     if (isWikiContextEnabled()) {
       const wiki = await fetchWikipediaContext(currentTopic);
       if (wiki) {
@@ -102,6 +102,11 @@ async function runPipeline(topic, genreKey) {
       console.log('  [Facts] haiku fact-bullet pass (see output/.../shorts_fact_bullets.txt)');
     }
 
+    pipelineContext = {
+      wikiContext: scriptOptions.wikiContext,
+      factBullets: scriptOptions.factBullets,
+      wikiResult: scriptOptions.wikiResult,
+    };
     script = await generateScript(currentTopic, genreKey, scriptOptions);
   }
 
@@ -110,14 +115,66 @@ async function runPipeline(topic, genreKey) {
     return null;
   }
 
-  // 스크립트 + 메타데이터
-  const metadata = await generateMetadata(script, currentTopic, genreKey);
+  let metadata = null;
+  const claimMaxAttempts = 2;
+  for (let cg = 1; cg <= claimMaxAttempts; cg++) {
+    metadata = await generateMetadata(script, currentTopic, genreKey);
+
+    const gate = runClaimGate({
+      script,
+      title: metadata.title,
+      wikiText: pipelineContext.wikiContext,
+      factBullets: pipelineContext.factBullets,
+    });
+    fs.writeFileSync(path.join(outputDir, 'claim_gate_audit.json'), JSON.stringify(gate, null, 2));
+
+    if (gate.skipped || gate.passed) {
+      if (!gate.skipped) {
+        const n = gate.claims?.length || 0;
+        console.log(`  [ClaimGate] 통과${n ? ` (strict claims: ${n})` : ''}`);
+      }
+      break;
+    }
+
+    console.warn(`  [ClaimGate] 실패 (${gate.failures.length}건)`);
+    for (const f of gate.failures) {
+      console.warn(`    - [${f.source}] ${f.claim} → ${f.reason}`);
+    }
+
+    if (gate.mode === 'warn') {
+      console.warn('  [ClaimGate] warn 모드 — 계속 진행');
+      break;
+    }
+
+    if (cg >= claimMaxAttempts) {
+      console.error('  [ClaimGate] 재시도 후에도 실패 — 이번 실행 건너뜀');
+      return {
+        skipped: true,
+        reason: 'claim_gate_failed',
+        genreKey,
+        topic: currentTopic,
+        claimGate: gate,
+      };
+    }
+
+    console.warn('  [ClaimGate] 스크립트 1회 재생성');
+    script = await generateScript(currentTopic, genreKey, {
+      wikiContext: pipelineContext.wikiContext,
+      wikiResult: pipelineContext.wikiResult,
+      factBullets: pipelineContext.factBullets,
+      claimGateFeedback: gate.failures
+        .map((f) => `[${f.source}] "${f.claim}" — ${f.reason}`)
+        .join('\n'),
+    });
+    if (!script) {
+      console.error('  [ClaimGate] 스크립트 재생성 실패 — 건너뜀');
+      return { skipped: true, reason: 'claim_gate_script_regen_failed', genreKey, topic: currentTopic };
+    }
+  }
+
   fs.writeFileSync(path.join(outputDir, 'script.txt'), script);
   fs.writeFileSync(path.join(outputDir, 'metadata.json'), JSON.stringify(metadata, null, 2));
   console.log(`  Title: ${metadata.title}`);
-  if (metadata.thumbnailLine) {
-    console.log(`  Thumbnail line: ${metadata.thumbnailLine}`);
-  }
 
   // TTS + 배경 영상 (병렬) — 듀얼이면 Pexels 세로 클립 N개(기본 4)를 균등 분할로 이어 붙임
   let videoPath2 = null;
@@ -130,14 +187,14 @@ async function runPipeline(topic, genreKey) {
         const paths = await fetchNBackgroundVideos(
           outputDir,
           genreKey,
-          metadata.thumbnailQuery || null,
+          metadata.backgroundQuery || null,
           n
         );
         backgroundPaths = paths;
         if (paths.length >= 2) videoPath2 = paths[1];
         return paths[0];
       }
-      return fetchBackgroundVideo(outputDir, genreKey, metadata.thumbnailQuery || null);
+      return fetchBackgroundVideo(outputDir, genreKey, metadata.backgroundQuery || null);
     })(),
   ]);
 
@@ -191,25 +248,14 @@ async function runPipeline(topic, genreKey) {
     fs.writeFileSync(path.join(outputDir, 'metadata.json'), JSON.stringify(metadata, null, 2));
   }
 
-  // 썸네일 카피: THUMBNAIL_LINE(제목과 이어지는 훅) 우선, 없으면 짧은 제목 일부
-  const THUMB_HOOK_MAX = 40;
-  const hookSource = (metadata.thumbnailLine && String(metadata.thumbnailLine).trim()) || metadata.title;
-  const hookText =
-    hookSource.length > THUMB_HOOK_MAX
-      ? `${hookSource.substring(0, THUMB_HOOK_MAX).trim()}…`
-      : hookSource;
-
-  const [finalPath, thumbnailPath] = await Promise.all([
-    composeVideo(videoPath, audioPath, assPath, outputDir, {
-      bgmPath,
-      ...(backgroundPaths && backgroundPaths.length > 1
-        ? { backgroundPaths }
-        : videoPath2
-          ? { backgroundPath2: videoPath2 }
-          : {}),
-    }),
-    generateThumbnail(hookText, outputDir, genreKey, metadata.thumbnailQuery || null),
-  ]);
+  const finalPath = await composeVideo(videoPath, audioPath, assPath, outputDir, {
+    bgmPath,
+    ...(backgroundPaths && backgroundPaths.length > 1
+      ? { backgroundPaths }
+      : videoPath2
+        ? { backgroundPath2: videoPath2 }
+        : {}),
+  });
 
   console.log(
     `  FFmpeg: dual_bg=${isDualBackgroundOn()}${
@@ -218,7 +264,7 @@ async function runPipeline(topic, genreKey) {
   );
 
   // 저작권 가드 (업로드 전 자동 검증)
-  runCopyrightGuard(outputDir, { videoPath, videoPath2, audioPath, thumbnailPath, script });
+  runCopyrightGuard(outputDir, { videoPath, videoPath2, audioPath, script });
 
   // 업로드 직전: 메타 JSON 기준으로 출처가 설명에 없으면 보강 (CC BY는 필수)
   const fsMetaPath = path.join(outputDir, 'freesound_bgm.json');
@@ -250,14 +296,12 @@ async function runPipeline(topic, genreKey) {
 
   // YouTube 업로드
   const { videoId, videoUrl } = await uploadVideo(finalPath, metadata, genreKey);
-  await setThumbnail(videoId, thumbnailPath, genreKey);
 
   await recordPublishedTopic({
     genreKey,
     topic: currentTopic,
     videoId,
     script,
-    thumbnailLine: metadata.thumbnailLine,
   });
 
   const result = { jobId, genreKey, topic: currentTopic, metadata, videoId, videoUrl };
@@ -332,18 +376,11 @@ async function runLongformPipeline(topic, genreKey) {
   }
   fs.writeFileSync(path.join(outputDir, 'metadata.json'), JSON.stringify(metadata, null, 2));
 
-  const hookText = pickLongformThumbnailHook(metadata, script);
-
-  const [finalPath, thumbnailPath] = await Promise.all([
-    composeLongformVideo(clipPaths, imagePaths, audioPath, assPath, outputDir, {
-      bgmPath,
-      script,
-      imagesPerSection: longformIps,
-    }),
-    generateThumbnail(hookText, outputDir, genreKey, metadata.thumbnailQuery || null, {
-      layout: 'corner',
-    }),
-  ]);
+  const finalPath = await composeLongformVideo(clipPaths, imagePaths, audioPath, assPath, outputDir, {
+    bgmPath,
+    script,
+    imagesPerSection: longformIps,
+  });
 
   console.log(`  FFmpeg (longform): 16:9, ${clipPaths.length} clips + ${imagePaths.length} AI images`);
 
@@ -352,7 +389,6 @@ async function runLongformPipeline(topic, genreKey) {
     videoPath: clipPaths[0],
     videoPath2: null,
     audioPath,
-    thumbnailPath,
     script,
   });
 
@@ -361,9 +397,8 @@ async function runLongformPipeline(topic, genreKey) {
   process.env.YOUTUBE_PRIVACY_STATUS = 'private';
 
   const { videoId, videoUrl } = await uploadVideo(finalPath, metadata, genreKey);
-  await setThumbnail(videoId, thumbnailPath, genreKey);
 
-  await recordPublishedTopic({ genreKey, topic, videoId, script, thumbnailLine: metadata.thumbnailLine });
+  await recordPublishedTopic({ genreKey, topic, videoId, script });
 
   if (savedPrivacy !== undefined) process.env.YOUTUBE_PRIVACY_STATUS = savedPrivacy;
   else delete process.env.YOUTUBE_PRIVACY_STATUS;
@@ -413,7 +448,7 @@ const genreArg = (args.find((a) => a.startsWith('--genre=')) || '').replace('--g
 const countArg = parseInt((args.find((a) => a.startsWith('--count=')) || '').replace('--count=', '') || String(UPLOAD_COUNT), 10);
 
 if (args.includes('--dry-run')) {
-  // Claude/OpenAI/Pexels/YouTube 호출 없음 — FFmpeg·canvas만 (비용 없음)
+  // Claude/OpenAI/Pexels/YouTube 호출 없음 — FFmpeg만 (비용 없음)
   runDryRunPipeline(genreArg).catch((e) => {
     console.error(e);
     process.exit(1);

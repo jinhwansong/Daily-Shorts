@@ -4,7 +4,6 @@ const path = require('path');
 const { getGenre, DEFAULT_GENRE } = require('../genres');
 const { srtToAss } = require('../video/subtitleGenerator');
 const { composeVideo } = require('../video/videoComposer');
-const { generateThumbnail } = require('../video/thumbnailGenerator');
 
 const FIXTURE_SCRIPT = path.join(__dirname, '../../fixtures/dry-run-script.txt');
 
@@ -92,7 +91,7 @@ function createBlackBackground(outPath, durationSec) {
 }
 
 /**
- * Claude / OpenAI / Pexels / YouTube 호출 없음. FFmpeg + canvas만 사용.
+ * Claude / OpenAI / Pexels / YouTube 호출 없음. FFmpeg만 사용.
  */
 async function runDryRunPipeline(genreKey = DEFAULT_GENRE) {
   if (!ffmpegOk()) {
@@ -132,11 +131,7 @@ async function runDryRunPipeline(genreKey = DEFAULT_GENRE) {
   fs.writeFileSync(srtPath, srtContent);
   const assPath = srtToAss(srtPath, outputDir);
 
-  const hookText = script.split('\n')[0];
-  const [finalPath, thumbnailPath] = await Promise.all([
-    composeVideo(videoPath, audioPath, assPath, outputDir),
-    Promise.resolve(generateThumbnail(hookText, outputDir, genreKey)),
-  ]);
+  const finalPath = await composeVideo(videoPath, audioPath, assPath, outputDir);
 
   fs.writeFileSync(
     path.join(outputDir, 'dry-run.json'),
@@ -145,7 +140,6 @@ async function runDryRunPipeline(genreKey = DEFAULT_GENRE) {
         ok: true,
         genreKey,
         finalMp4: finalPath,
-        thumbnail: thumbnailPath,
         note: 'YouTube 업로드·API 호출 없음',
       },
       null,
@@ -155,9 +149,8 @@ async function runDryRunPipeline(genreKey = DEFAULT_GENRE) {
 
   console.log(`\n✅ DRY RUN 완료 (비용 없음)`);
   console.log(`   영상: ${finalPath}`);
-  console.log(`   썸네일: ${thumbnailPath}`);
   console.log(`   로컬 플레이어로 final.mp4 재생해 보세요.\n`);
-  return { finalPath, thumbnailPath, outputDir };
+  return { finalPath, outputDir };
 }
 
 module.exports = { runDryRunPipeline };

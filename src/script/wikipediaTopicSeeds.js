@@ -1,6 +1,5 @@
 /**
  * 미스터리 토픽 시드 — en.wikipedia.org categorymembers (API 키 불필요, User-Agent 필수)
- * REDDIT 실패 대체 또는 TOPIC_SEED_SOURCE=wikipedia
  */
 
 const axios = require('axios');
