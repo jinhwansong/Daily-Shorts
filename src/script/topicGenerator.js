@@ -4,7 +4,7 @@ const { getGenre, DEFAULT_GENRE } = require('../genres');
 const { topicPromptAddon } = require('../utils/contentIntensity');
 const { completeLlm } = require('./scriptLlm');
 const { buildTierPlan, formatTierBatchBlock } = require('./topicTier');
-const { fetchWikipediaSeedTitles } = require('./wikipediaTopicSeeds');
+const { fetchWikipediaSeedTitles, pickWikiArticleTopics } = require('./wikipediaTopicSeeds');
 
 const TOPIC_HISTORY_FILE = path.join(__dirname, '../../output/topic_history.json');
 
@@ -77,43 +77,23 @@ function getTopicSeedLimit() {
   return Number.isFinite(n) && n > 0 ? Math.min(40, n) : 15;
 }
 
-/** mystery 전용: 생성 토픽이 실제로 미해결·미설명으로 남은 사건인지 모델에 강제 */
-function mysteryUnresolvedTopicsAddon(genreKey) {
-  if (genreKey !== 'mystery') return '';
-  return `
-SOURCE DISCIPLINE (non-negotiable — apply BEFORE writing each topic):
-- Only write a topic if you are confident the CORE EVENT has a Wikipedia article or is documented in major English-language news archives (BBC, NYT, AP, etc.).
-- The specific event described must be real and documented, not a plausible-sounding composite or a known person paired with an invented incident. Example of what NOT to do: naming a real historical figure and inventing an event about them (e.g. "Colonel X's crew vanished from a sealed hangar" when no such event exists in sources).
-- If you are not certain a specific detail (year, name, outcome) is documented, omit that detail entirely — write the topic with fewer specifics rather than risk hallucination.
-- If you are unsure whether a case is real and documented, skip it entirely and choose a different case you are confident about.
-
-Unresolved cases only (non-negotiable):
-- Each topic must describe a real case that is still unresolved in reputable public sources: perpetrator not identified or not convicted for the crime, person still missing, or the core incident still lacks a widely accepted explanation.
-- Do NOT use cases that are clearly solved, closed, or fully explained (accepted conviction, missing person found with an established account, mystery debunked by mainstream investigation).
-- If you are unsure whether a case remains unresolved, omit it and choose a different well-documented unsolved case.`;
+/** wiki = 위키 기사 제목 직접 | llm = Haiku 토픽 생성. mystery 기본 wiki */
+function getTopicSource(genreKey) {
+  const raw = (process.env.TOPIC_SOURCE || '').trim().toLowerCase();
+  if (raw === 'wiki' || raw === 'llm') return raw;
+  return genreKey === 'mystery' ? 'wiki' : 'llm';
 }
 
-async function generateTopics(count = 1, genreKey = DEFAULT_GENRE) {
-  const genre = getGenre(genreKey);
-  const usedTopics = loadUsedTopics(genreKey);
-  const recentSample = usedTopics.slice(-30);
-
-  // 날짜 기반 dedup: 최근 N일 내 history에서 중복 방지
-  const dedupDays = getDedupDays();
-  const recentFromHistory = getRecentTopicsFromHistory(dedupDays);
-
-  const allAvoid = [
-    ...new Set([...recentSample, ...recentFromHistory]),
-  ];
-
-  let avoidContext = '';
-  if (allAvoid.length > 0) {
-    avoidContext =
-      `\nAVOID these topics already used in the last ${dedupDays} days:\n` +
-      `${allAvoid.map((t) => `- ${t}`).join('\n')}\n` +
-      `Do NOT generate any topic about the same person, case, or event.\n`;
+async function generateTopicsFromWiki(count, genreKey, allAvoid) {
+  const topics = await pickWikiArticleTopics(count, allAvoid);
+  if (topics.length > 0) {
+    console.log(`  [Topic] Wikipedia 기사 제목 ${topics.length}건 (LLM 토픽 생략)`);
   }
+  return topics;
+}
 
+async function generateTopicsFromLlm(count, genreKey, allAvoid, avoidContext) {
+  const genre = getGenre(genreKey);
   const instruction = genre.topicInstruction.replace('{count}', count);
 
   let seedBlock = '';
@@ -142,18 +122,76 @@ Rules:
 - No numbering, no bullets, no explanation
 - One topic per line, exactly ${count} lines`,
   });
-  const topics = raw
+  return raw
     .split('\n')
     .map((line) => line.replace(/^\d+[\.\)]\s*/, '').trim())
     .filter((line) => line.length > 0)
     .slice(0, count);
+}
+
+/** mystery 전용: 생성 토픽이 실제로 미해결·미설명으로 남은 사건인지 모델에 강제 */
+function mysteryUnresolvedTopicsAddon(genreKey) {
+  if (genreKey !== 'mystery') return '';
+  return `
+SOURCE DISCIPLINE (non-negotiable — apply BEFORE writing each topic):
+- Only write a topic if you are confident the CORE EVENT has a Wikipedia article or is documented in major English-language news archives (BBC, NYT, AP, etc.).
+- The specific event described must be real and documented, not a plausible-sounding composite or a known person paired with an invented incident. Example of what NOT to do: naming a real historical figure and inventing an event about them (e.g. "Colonel X's crew vanished from a sealed hangar" when no such event exists in sources).
+- If you are not certain a specific detail (year, name, outcome) is documented, omit that detail entirely — write the topic with fewer specifics rather than risk hallucination.
+- If you are unsure whether a case is real and documented, skip it entirely and choose a different case you are confident about.
+
+Unresolved cases only (non-negotiable):
+- Each topic must describe a real case that is still unresolved in reputable public sources: perpetrator not identified or not convicted for the crime, person still missing, or the core incident still lacks a widely accepted explanation.
+- Do NOT use cases that are clearly solved, closed, or fully explained (accepted conviction, missing person found with an established account, mystery debunked by mainstream investigation).
+- If you are unsure whether a case remains unresolved, omit it and choose a different well-documented unsolved case.`;
+}
+
+async function generateTopics(count = 1, genreKey = DEFAULT_GENRE) {
+  const usedTopics = loadUsedTopics(genreKey);
+  const recentSample = usedTopics.slice(-30);
+  const dedupDays = getDedupDays();
+  const recentFromHistory = getRecentTopicsFromHistory(dedupDays);
+  const allAvoid = [...new Set([...recentSample, ...recentFromHistory])];
+
+  let avoidContext = '';
+  if (allAvoid.length > 0) {
+    avoidContext =
+      `\nAVOID these topics already used in the last ${dedupDays} days:\n` +
+      `${allAvoid.map((t) => `- ${t}`).join('\n')}\n` +
+      `Do NOT generate any topic about the same person, case, or event.\n`;
+  }
+
+  const source = getTopicSource(genreKey);
+  let topics = [];
+
+  if (source === 'wiki' && genreKey === 'mystery') {
+    topics = await generateTopicsFromWiki(count, genreKey, allAvoid);
+    if (topics.length < count) {
+      console.warn(
+        `[Topic] Wikipedia pick ${topics.length}/${count} — 부족분 LLM 토픽으로 보충`
+      );
+      const llmTopics = await generateTopicsFromLlm(
+        count - topics.length,
+        genreKey,
+        [...allAvoid, ...topics],
+        avoidContext
+      );
+      topics = [...topics, ...llmTopics];
+    }
+  } else {
+    topics = await generateTopicsFromLlm(count, genreKey, allAvoid, avoidContext);
+  }
+
+  if (topics.length === 0) {
+    console.warn('[Topic] 토픽 0건 — 빈 배열 반환');
+    return [];
+  }
 
   saveUsedTopics(genreKey, [...usedTopics, ...topics]);
   appendTopicHistory(topics);
   return topics;
 }
 
-module.exports = { generateTopics };
+module.exports = { generateTopics, getTopicSource };
 
 if (require.main === module) {
   require('dotenv').config({ path: path.join(__dirname, '../../.env') });

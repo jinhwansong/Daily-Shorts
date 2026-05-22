@@ -4,7 +4,7 @@
   "description": "Mystery/Horror YouTube Shorts automation pipeline",
   "main": "src/index.js",
   "scripts": {
-    "test": "node --test tests/copyrightGuard.test.js tests/topicTier.test.js tests/wikipediaTopicSeeds.test.js tests/videoBookend.test.js tests/topicKey.test.js tests/publishedTopics.test.js tests/mysteryPromptBookend.test.js tests/claimAssertionGate.test.js",
+    "test": "node --test tests/copyrightGuard.test.js tests/topicTier.test.js tests/wikipediaTopicSeeds.test.js tests/wikiTopicPick.test.js tests/videoBookend.test.js tests/topicKey.test.js tests/publishedTopics.test.js tests/mysteryPromptBookend.test.js tests/claimAssertionGate.test.js",
     "dry-run": "node src/index.js --dry-run --genre=mystery",
     "mystery": "node src/index.js --run-daily --genre=mystery --count=5",
     "mystery-long": "node src/index.js --run-once --genre=mystery-long",

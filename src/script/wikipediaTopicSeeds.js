@@ -3,6 +3,7 @@
  */
 
 const axios = require('axios');
+const { normalizeTopicKey } = require('../utils/topicKey');
 
 const UA =
   (process.env.WIKIPEDIA_USER_AGENT && String(process.env.WIKIPEDIA_USER_AGENT).trim()) ||
@@ -88,8 +89,49 @@ async function fetchWikipediaSeedTitles(limit = 15) {
   }
 }
 
+/** used_topics / history 와 겹치면 true */
+function isTitleBlocked(title, avoidList = []) {
+  const key = normalizeTopicKey(title);
+  if (!key) return true;
+  for (const entry of avoidList) {
+    const ak = normalizeTopicKey(entry);
+    if (!ak) continue;
+    if (key === ak || ak.includes(key) || key.includes(ak)) return true;
+  }
+  return false;
+}
+
+/**
+ * Wikipedia category에서 기사 제목을 직접 토픽으로 pick (LLM 없음).
+ * @param {number} count
+ * @param {string[]} avoidList
+ * @returns {Promise<string[]>}
+ */
+async function pickWikiArticleTopics(count, avoidList = []) {
+  const need = Math.max(1, count);
+  const picked = [];
+  const seen = new Set();
+  let attempts = 0;
+
+  while (picked.length < need && attempts < 5) {
+    attempts += 1;
+    const batch = await fetchWikipediaSeedTitles(Math.max(need * 4, 20));
+    for (const title of batch) {
+      const k = normalizeTopicKey(title);
+      if (!k || seen.has(k) || isTitleBlocked(title, avoidList)) continue;
+      seen.add(k);
+      picked.push(title);
+      if (picked.length >= need) break;
+    }
+  }
+
+  return picked.slice(0, need);
+}
+
 module.exports = {
   fetchWikipediaSeedTitles,
   parseSeedCategories,
   titlesFromCategoryMembersQuery,
+  isTitleBlocked,
+  pickWikiArticleTopics,
 };
