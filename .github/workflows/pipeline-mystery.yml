@@ -1,10 +1,25 @@
-# 미스터리/괴담 — 매일 1편 (KST 09:00 = UTC 00:00)
-name: Mystery Pipeline
+name: Noctivault Worker
 
 on:
-  schedule:
-    # - cron: '0 0 * * *'
   workflow_dispatch:
+    inputs:
+      operation:
+        description: "produce: 제작 / request: JSON 관리 명령 / sync-youtube: Studio 상태 대조"
+        type: choice
+        options: [produce, request, sync-youtube]
+        default: produce
+      genre:
+        description: 준비된 콘텐츠 형식
+        type: choice
+        options: [mystery, mystery-long]
+        default: mystery
+      request_json:
+        description: 'request 전용 JSON. 예: {"command":"status"}. API 키는 입력하지 마세요.'
+        type: string
+        required: false
+
+permissions:
+  contents: read
 
 concurrency:
   group: pipeline-mystery
@@ -17,56 +32,52 @@ jobs:
     env:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+      FAL_KEY: ${{ secrets.FAL_KEY }}
       YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
       YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
       YOUTUBE_REFRESH_TOKEN_MYSTERY: ${{ secrets.YOUTUBE_REFRESH_TOKEN_MYSTERY }}
-      # 선택: private(기본) | unlisted | public — 비우면 코드 기본(private)
-      YOUTUBE_PRIVACY_STATUS: ${{ secrets.YOUTUBE_PRIVACY_STATUS }}
-      # 선택: Freesound CC0 배경음 — 비워 두면 로컬 assets/bgm 또는 무 BGM
-      FREESOUND_API_KEY: ${{ secrets.FREESOUND_API_KEY }}
-      # 선택: 설명란 하단 고정 저작권·출처 (Repository secret, 여러 줄 가능)
-      YOUTUBE_ATTRIBUTION_FOOTER: ${{ secrets.YOUTUBE_ATTRIBUTION_FOOTER }}
-      # 선택: SCRIPT_LLM_PROVIDER=google 등 롱폼·스크립트 경로에서 Gemini 사용 시
-      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-      GOOGLE_AI_API_KEY: ${{ secrets.GOOGLE_AI_API_KEY }}
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-
+      GCS_BUCKET: ${{ secrets.GCS_BUCKET }}
+      WORKER_GENRE: ${{ inputs.genre || 'mystery' }}
+      DAILY_UPLOAD_COUNT: ${{ vars.DAILY_UPLOAD_COUNT }}
+      SUBTITLE_FONT_NAME: ${{ vars.SUBTITLE_FONT_NAME }}
+      SUBTITLE_FONT_SIZE: ${{ vars.SUBTITLE_FONT_SIZE }}
+      SUBTITLE_PRIMARY_ABGR: ${{ vars.SUBTITLE_PRIMARY_ABGR }}
+      SUBTITLE_SECONDARY_ABGR: ${{ vars.SUBTITLE_SECONDARY_ABGR }}
+      SUBTITLE_OUTLINE_ABGR: ${{ vars.SUBTITLE_OUTLINE_ABGR }}
+      SUBTITLE_BACK_ABGR: ${{ vars.SUBTITLE_BACK_ABGR }}
+      SUBTITLE_BACK_BOX: ${{ vars.SUBTITLE_BACK_BOX }}
+      SUBTITLE_BOLD: ${{ vars.SUBTITLE_BOLD }}
+      SUBTITLE_SPACING: ${{ vars.SUBTITLE_SPACING }}
+      SUBTITLE_OUTLINE: ${{ vars.SUBTITLE_OUTLINE }}
+      SUBTITLE_SHADOW: ${{ vars.SUBTITLE_SHADOW }}
+      SUBTITLE_PLACEMENT: ${{ vars.SUBTITLE_PLACEMENT }}
+      SUBTITLE_MARGIN_LR: ${{ vars.SUBTITLE_MARGIN_LR }}
+      SUBTITLE_MARGIN_V: ${{ vars.SUBTITLE_MARGIN_V }}
     steps:
       - uses: actions/checkout@v4
-
-      # 주제 중복 방지용 JSON — 러너가 매번 새로여도 이전 실행과 이어짐
-      - name: Restore used-topics cache
-        id: topics-cache
-        uses: actions/cache@v4
-        with:
-          path: output/used_topics_mystery.json
-          key: used-topics-mystery-${{ github.run_id }}
-          restore-keys: |
-            used-topics-mystery-
-
-      - name: Ensure output directory
-        run: mkdir -p output
-
-      - name: Install FFmpeg + edge-tts (무료 TTS)
-        run: |
-          sudo apt-get update && sudo apt-get install -y ffmpeg
-          pip install edge-tts --quiet
-
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: "22"
           cache: npm
-
-      - run: npm ci
-
-      - name: Run mystery pipeline (1 video)
-        run: node src/index.js --run-daily --genre=mystery --count=1
-
-      - name: Save used-topics cache
-        if: always() && hashFiles('output/used_topics_mystery.json') != ''
-        uses: actions/cache/save@v4
+      - uses: google-github-actions/auth@v2
         with:
-          path: output/used_topics_mystery.json
-          key: used-topics-mystery-${{ github.run_id }}-${{ hashFiles('output/used_topics_mystery.json') }}
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - name: Install media tools
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu-core
+      - run: npm ci
+      - run: npm run build
+      - name: Sync publication state from YouTube Studio
+        if: inputs.operation != 'request'
+        run: node dist/main.js --sync-youtube
+      - name: Run one management request
+        if: inputs.operation == 'request'
+        env:
+          WORKER_REQUEST: ${{ inputs.request_json }}
+        run: |
+          node -e "require('node:fs').writeFileSync(process.env.RUNNER_TEMP + '/request.json', process.env.WORKER_REQUEST || '', {mode: 0o600})"
+          node dist/main.js --request="$RUNNER_TEMP/request.json"
+      - name: Produce one reserved content item up to private upload
+        if: inputs.operation == 'produce' || inputs.operation == ''
+        run: node dist/main.js --run-once --genre="$WORKER_GENRE"

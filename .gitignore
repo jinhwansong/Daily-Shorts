@@ -10,3 +10,6 @@ output/*
 
 mvp.md
 
+dist/
+*.tsbuildinfo
+

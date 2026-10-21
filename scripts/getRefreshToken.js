@@ -21,6 +21,7 @@
 require('dotenv').config({ path: require('path').join(__dirname, '../.env') });
 const { google } = require('googleapis');
 const http = require('http');
+const oauthState = require('crypto').randomBytes(24).toString('hex');
 
 const args = process.argv.slice(2);
 const channelArg = (args.find((a) => a.startsWith('--channel=')) || '').replace('--channel=', '');
@@ -61,13 +62,19 @@ function waitForCallback() {
           return;
         }
 
+        if (url.searchParams.get('state') !== oauthState) {
+          res.writeHead(403, { 'Content-Type':'text/plain; charset=utf-8' });
+          res.end('OAuth state mismatch. Use the authorization URL printed in your terminal.');
+          return;
+        }
+
         const oErr = url.searchParams.get('error');
         if (oErr) {
           const desc = url.searchParams.get('error_description') || '';
-          res.setHeader('Content-Type', 'text/html; charset=utf-8');
+          res.setHeader('Content-Type', 'text/plain; charset=utf-8');
           res.writeHead(400);
           res.end(
-            `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body><p>${oErr}</p><p>${desc}</p></body></html>`
+            `OAuth: ${oErr}\n${desc}`
           );
           server.close(() => reject(new Error(`OAuth: ${oErr} ${desc}`)));
           return;
@@ -115,8 +122,13 @@ async function run() {
   const tokenPromise = waitForCallback();
 
   const authUrl = oauth2Client.generateAuthUrl({
+    state: oauthState,
     access_type: 'offline',
-    scope: ['https://www.googleapis.com/auth/youtube.upload'],
+    scope: [
+      'https://www.googleapis.com/auth/youtube.upload',
+      'https://www.googleapis.com/auth/youtube.force-ssl',
+      'https://www.googleapis.com/auth/youtube.readonly',
+    ],
     prompt: 'consent',
   });
 
